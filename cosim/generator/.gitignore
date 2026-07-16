@@ -1,0 +1,4 @@
+.venv/
+riscv-dv/
+__pycache__/
+*.pyc

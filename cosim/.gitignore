@@ -1,2 +1,4 @@
 build/
 __pycache__/
+# Programs written into asm_tests/ by generator/gen_tests.sh.
+asm_tests/riscv_*_test_*.S

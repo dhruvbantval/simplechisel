@@ -12,6 +12,21 @@ To run a folder of generated tests:
 STEPS=80 JOBS=4 cosim/run_cosim.sh path/to/generated_tests/
 ```
 
+To generate a fresh batch of random RV64I programs, use `cosim/generator/` (see
+[generator/README.md](generator/README.md)). It writes them straight into
+`cosim/asm_tests/`, so the plain command above then runs them:
+
+```bash
+cosim/generator/gen_tests.sh
+STEPS=80 JOBS=4 cosim/run_cosim.sh
+```
+
+`cosim/asm_tests/` holds both kinds of test: `riscv_rv64i_dino_test_*.S` are
+generated and git-ignored, while `06_branches.S`, `07_loop_sum.S`, `08_gcd.S`,
+and `09_fibonacci.S` are hand-written and committed. The generator emits no
+branches or jumps (`+no_branch_jump=1`), so those four are the suite's only
+control-flow coverage.
+
 The runner finds every `.S`/`.s` file in the folder, keeps going across tests, writes per-test
 JSON files under `cosim/build/results/<test_name>/result.json`, and writes one campaign JSON under
 `cosim/build/campaigns/`.

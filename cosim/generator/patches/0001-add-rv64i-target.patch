@@ -1,0 +1,71 @@
+Add an rv64i target to riscv-dv, and stop pygen test modules self-running on import.
+
+Applied to chipsalliance/riscv-dv @ b7a0b4b by cosim/generator/gen_tests.sh.
+
+Upstream has no rv64i target -- its RV64 targets all bundle M/C/F/D, which
+DINO's single-cycle CPU doesn't implement. Two pieces:
+
+  run.py
+      Teach --target about rv64i (mabi=lp64, isa=rv64i_zicsr_zifencei). The
+      matching testlist and core setting are not upstream either; gen_tests.sh
+      copies them in from config/.
+
+  pygen/pygen_src/test/riscv_{instr_base,rand_instr}_test.py
+      These modules call .run() at import time, so importing one (as
+      riscv_rand_instr_test does with riscv_instr_base_test) kicks off a
+      spurious generation run. Guard both with `if __name__ == "__main__"`.
+
+Not upstreamable as-is: the rv64i target would be a reasonable PR, but the
+__main__ guards change behaviour other riscv-dv users may rely on.
+
+diff --git a/pygen/pygen_src/test/riscv_instr_base_test.py b/pygen/pygen_src/test/riscv_instr_base_test.py
+index 48a530a..8283c57 100644
+--- a/pygen/pygen_src/test/riscv_instr_base_test.py
++++ b/pygen/pygen_src/test/riscv_instr_base_test.py
+@@ -84,7 +84,7 @@ class riscv_instr_base_test:
+ 
+ start_time = time.time()
+ riscv_base_test_ins = riscv_instr_base_test()
+-if cfg.argv.gen_test == "riscv_instr_base_test":
++if __name__ == "__main__" and cfg.argv.gen_test == "riscv_instr_base_test":
+     riscv_base_test_ins.run()
+     end_time = time.time()
+     logging.info("Total execution time: {}s".format(round(end_time - start_time)))
+diff --git a/pygen/pygen_src/test/riscv_rand_instr_test.py b/pygen/pygen_src/test/riscv_rand_instr_test.py
+index 2c61df2..f78fca0 100644
+--- a/pygen/pygen_src/test/riscv_rand_instr_test.py
++++ b/pygen/pygen_src/test/riscv_rand_instr_test.py
+@@ -43,6 +43,7 @@ class riscv_rand_instr_test(riscv_instr_base_test):
+ 
+ start_time = time.time()
+ riscv_rand_test_ins = riscv_rand_instr_test()
+-riscv_rand_test_ins.run()
+-end_time = time.time()
+-logging.info("Total execution time: {}s".format(round(end_time - start_time)))
++if __name__ == "__main__":
++    riscv_rand_test_ins.run()
++    end_time = time.time()
++    logging.info("Total execution time: {}s".format(round(end_time - start_time)))
+diff --git a/run.py b/run.py
+index 4097c9f..9a68f0a 100644
+--- a/run.py
++++ b/run.py
+@@ -787,7 +787,7 @@ def parse_args(cwd):
+ 
+     parser.add_argument("--target", type=str, default="rv32imc",
+                         help="Run the generator with pre-defined targets: \
+-                            rv32imc, rv32i, rv32imafdc, rv64imc, rv64gc, \
++                            rv32imc, rv32i, rv32imafdc, rv64i, rv64imc, rv64gc, \
+                             rv64imafdc")
+     parser.add_argument("-o", "--output", type=str,
+                         help="Output directory name", dest="o")
+@@ -967,6 +967,9 @@ def load_config(args, cwd):
+         elif args.target == "rv32i":
+             args.mabi = "ilp32"
+             args.isa = "rv32i_zicsr_zifencei"
++        elif args.target == "rv64i":
++            args.mabi = "lp64"
++            args.isa = "rv64i_zicsr_zifencei"
+         elif args.target == "rv64imc":
+             args.mabi = "lp64"
+             args.isa = "rv64imc_zicsr_zifencei"
