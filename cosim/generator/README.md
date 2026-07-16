@@ -1,26 +1,31 @@
 # Test generator
 
-Generates random RV64I programs for the DINO/Spike cosimulation, using a
-trimmed copy of [riscv-dv](https://github.com/google/riscv-dv).
+Generates random RV64I programs for the DINO/Spike cosimulation, using
+[riscv-dv](https://github.com/chipsalliance/riscv-dv).
+
+riscv-dv is **not** vendored here. This folder holds only the DINO-specific
+pieces; `gen_tests.sh` clones riscv-dv on first run, pins it to a known commit,
+and patches it. That's why there are 8 files here instead of a 60-file fork.
 
 ---
 
-## Step 1 — Check you have Python 3.10-3.12
+## Step 1 — Check prerequisites
 
 ```bash
 python3.11 --version
+git --version
 ```
 
-If that prints a version, you're set. If it says "command not found":
+If `python3.11` says "command not found":
 
 ```bash
 brew install python@3.11
 ```
 
-**Why it matters:** the generator needs `pyvsc`, which fails to install on
-Python 3.13+. Your default `python3` may be newer — that's fine, the script
-looks for a 3.11 automatically. If your interpreter is somewhere unusual,
-point at it directly with `PYTHON=/path/to/python3.11`.
+**Why 3.11:** the generator needs `pyvsc`, which fails to install on Python
+3.13+. Your default `python3` may be newer — that's fine, the script finds a
+3.11 on its own. If yours lives somewhere unusual, pass
+`PYTHON=/path/to/python3.11`.
 
 ## Step 2 — Make the script executable (first time only)
 
@@ -36,8 +41,8 @@ Run from the repository root:
 cosim/generator/gen_tests.sh
 ```
 
-The first run also creates a virtualenv and installs dependencies, so it takes
-a couple of minutes. Later runs take a few seconds.
+The first run clones riscv-dv and builds a virtualenv, so it takes a couple of
+minutes and needs network access. Later runs are offline and take seconds.
 
 This writes 10 programs into `cosim/asm_tests/`, named
 `riscv_rv64i_dino_test_0.S` … `_9.S`.
@@ -48,9 +53,8 @@ This writes 10 programs into `cosim/asm_tests/`, named
 STEPS=80 JOBS=4 cosim/run_cosim.sh
 ```
 
-No path needed — `run_cosim.sh` already reads `cosim/asm_tests/`, so it picks
-up the generated programs together with the hand-written ones. Results land in
-`cosim/build/results/<test_name>/result.json` as usual.
+No path needed — `run_cosim.sh` already reads `cosim/asm_tests/`. Results land
+in `cosim/build/results/<test_name>/result.json` as usual.
 
 ---
 
@@ -62,8 +66,8 @@ Generate a different number of programs:
 TESTS=50 cosim/generator/gen_tests.sh
 ```
 
-Reproduce an exact program (the same seed always gives the same program). Each
-run prints the seed it used:
+Reproduce an exact program — the same seed always gives the same program, and
+every run prints the seeds it used:
 
 ```bash
 SEED=14674157 TESTS=1 cosim/generator/gen_tests.sh
@@ -76,55 +80,124 @@ DEST=/tmp/mytests cosim/generator/gen_tests.sh
 STEPS=80 JOBS=4 cosim/run_cosim.sh /tmp/mytests/
 ```
 
-All options: `TESTS` (count, default 10), `SEED` (default random), `DEST`
-(default `cosim/asm_tests`), `PYTHON` (interpreter for the venv), `TARGET`
-(default `rv64i`), `TEST` (default `riscv_rv64i_dino_test`).
+Start over from a clean riscv-dv checkout:
+
+```bash
+rm -rf cosim/generator/riscv-dv && cosim/generator/gen_tests.sh
+```
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `TESTS` | `10` | Number of programs |
+| `SEED` | random | Fixed seed, for reproducing a program |
+| `DEST` | `cosim/asm_tests` | Where converted programs go |
+| `PYTHON` | auto-detected | Interpreter used to build the venv |
+| `TARGET` | `rv64i` | riscv-dv target |
+| `TEST` | `riscv_rv64i_dino_test` | Test name in `config/testlist.yaml` |
+| `RISCV_DV_REF` | pinned SHA | riscv-dv commit to check out |
+| `RISCV_DV_URL` | chipsalliance/riscv-dv | Clone source |
+| `RISCV_DV_DIR` | `cosim/generator/riscv-dv` | Where the clone lives |
+
+## What's in this folder
+
+Everything here is DINO-specific. Nothing upstream is copied in.
+
+| Path | Purpose |
+| --- | --- |
+| `gen_tests.sh` | Sets up riscv-dv, generates, converts. The entry point. |
+| `dino_convert.py` | Rewrites riscv-dv programs into DINO's bare-metal format. |
+| `config/testlist.yaml` | The `riscv_rv64i_dino_test` definition — instruction mix. |
+| `config/riscv_core_setting.py` | pygen core setting for rv64i (XLEN, supported ISA). |
+| `patches/0001-add-rv64i-target.patch` | The riscv-dv source changes we need. |
+| `requirements.txt` | Generation-only Python deps. |
+
+`riscv-dv/` and `.venv/` are created by the script and git-ignored. Both are
+disposable — delete either and the next run rebuilds it identically.
+
+## How the riscv-dv setup works
+
+`gen_tests.sh` does this before generating:
+
+1. Clones `chipsalliance/riscv-dv` into `cosim/generator/riscv-dv/` (shallow).
+2. Checks out the commit pinned in `RISCV_DV_REF` — currently `b7a0b4b`.
+3. Runs `git checkout -- .` to reset, then applies `patches/`. Resetting first
+   is what makes re-running safe; `git apply` refuses an already-applied patch.
+4. Copies `config/` into the checkout (`target/rv64i/` and
+   `pygen/pygen_src/target/rv64i/`).
+
+The pin matters: it keeps generation reproducible and keeps the patch
+applying. Upstream moving on cannot silently change your test programs.
+
+### Why a patch is needed
+
+Upstream riscv-dv has **no rv64i target** — its RV64 targets all bundle M/C/F/D,
+which DINO's single-cycle CPU doesn't implement. The patch adds `rv64i` to
+`run.py` (`mabi=lp64`, `isa=rv64i_zicsr_zifencei`), and guards two pygen test
+modules with `if __name__ == "__main__"` so importing one doesn't kick off a
+spurious generation run. The rv64i testlist and core setting aren't upstream
+either, which is why they live in `config/`.
+
+The patch header explains each change in full.
+
+### Updating riscv-dv
+
+```bash
+RISCV_DV_REF=<new-sha> cosim/generator/gen_tests.sh
+```
+
+If the patch no longer applies, the run fails loudly at the `git apply` step
+rather than generating something wrong. To refresh it:
+
+```bash
+cd cosim/generator/riscv-dv
+# fix up the conflicting hunks by hand, then:
+git diff -- run.py pygen/pygen_src/test/ > ../patches/0001-add-rv64i-target.patch
+```
+
+Keep the explanatory header at the top of the patch file when you regenerate.
 
 ## Generated vs hand-written tests
 
-Both live in `cosim/asm_tests/`, and they're kept apart by filename:
+Both live in `cosim/asm_tests/`, kept apart by filename:
 
 - `06_branches.S`, `07_loop_sum.S`, `08_gcd.S`, `09_fibonacci.S` — hand-written,
   committed to git.
 - `riscv_rv64i_dino_test_*.S` — generated, git-ignored.
 
-**Those four hand-written tests are not redundant.** `testlist.yaml` sets
+**Those four are not redundant.** `config/testlist.yaml` sets
 `+no_branch_jump=1`, so generated programs contain zero branches and jumps —
 they're straight-line arithmetic and load/store only. The four hand-written
-tests are the only branch, loop, and jump coverage in the suite. Don't delete
-them expecting the generator to cover that.
+tests are the suite's only branch, loop, and jump coverage.
 
-The reason branches are off: `dino_convert.py` flattens riscv-dv's output and
-drops labels, so a branch target would disappear and the program wouldn't
-assemble. Generating branch tests means teaching the converter to keep labels
-whose instructions reference them first.
-
-(The earlier `01`–`05`, `10`, `11` tests were removed — random RV64I streams
-cover that ground. They're in git history if wanted.)
+Branches are off because `dino_convert.py` flattens riscv-dv's output and drops
+labels, so a branch target would disappear and the program wouldn't assemble.
+Generating branch tests means teaching the converter to keep referenced labels
+first.
 
 Each run deletes only the previously generated `${TEST}_*.S` files and leaves
-the hand-written ones alone. To drop the generated ones by hand:
+the hand-written ones alone. To clear the generated ones by hand:
 
 ```bash
 rm -f cosim/asm_tests/riscv_rv64i_dino_test_*.S
 ```
 
-riscv-dv's raw output — the RVTEST boilerplate version of each program, plus
-sim logs — is staged in a temp dir and deleted when the script finishes. Only
-the converted, DINO-ready programs are kept. If you need to inspect the raw
-form, run `run.py` directly with `-o <dir>` (see Troubleshooting for the env
-vars it needs).
+riscv-dv's raw output — the RVTEST boilerplate version, plus sim logs — is
+staged in a temp dir and deleted when the script finishes. Only the converted,
+DINO-ready programs are kept.
 
 ## Changing what gets generated
 
-Edit `target/rv64i/testlist.yaml`. It currently asks for 250 instructions per
-program with no branches/jumps, no CSR/fence/privileged, and no compressed
-instructions — the subset DINO's single-cycle CPU implements. The knobs are
-riscv-dv's `gen_opts`, e.g. `+instr_cnt=500` for longer programs.
+Edit `config/testlist.yaml`; it's copied into the checkout on every run. It
+currently asks for 250 instructions per program with no branches/jumps, no
+CSR/fence/privileged, and no compressed instructions — the subset DINO
+implements. The knobs are riscv-dv's `gen_opts`, e.g. `+instr_cnt=500`.
 
 ## Troubleshooting
 
 **`error: need Python 3.10-3.12 for pyvsc/PyBoolector`** — see Step 1.
+
+**`error: patch does not apply`** — `RISCV_DV_REF` was moved to a commit the
+patch doesn't fit. See "Updating riscv-dv" above.
 
 **`ModuleNotFoundError: No module named 'vsc'` or `'pygen_src'`** — the venv is
 incomplete or wasn't picked up. Rebuild it:
@@ -133,43 +206,21 @@ incomplete or wasn't picked up. Rebuild it:
 rm -rf cosim/generator/.venv && cosim/generator/gen_tests.sh
 ```
 
-Note that running `run.py` by hand usually hits this, because it needs both the
-venv on `PATH` and `pygen/` on `PYTHONPATH`. `gen_tests.sh` sets both — prefer it.
+Running riscv-dv's `run.py` by hand usually hits this: it needs both the venv on
+`PATH` and `pygen/` on `PYTHONPATH`. `gen_tests.sh` sets both — prefer it.
 
 **`could not find 'init:' start marker`** from `dino_convert.py` — a generated
-program didn't have the shape the converter expects, likely because
-`testlist.yaml` was edited to enable instructions DINO can't handle.
+program didn't have the shape the converter expects, most likely because
+`config/testlist.yaml` was edited to enable instructions DINO can't handle.
 
----
+**Anything odd after editing the checkout by hand** — `riscv-dv/` is disposable:
 
-## What this folder is
+```bash
+rm -rf cosim/generator/riscv-dv && cosim/generator/gen_tests.sh
+```
 
-The upstream riscv-dv checkout is 264M; this is ~1.3M across 73 files — only
-what's needed to generate RV64I programs.
+## Verified
 
-riscv-dv has two generators: the SystemVerilog/UVM one (needs VCS or Questa)
-and `pygen`, a pure-Python reimplementation used via `--simulator pyflow`. Only
-pygen is vendored here, since it's the one that runs without a commercial
-simulator.
-
-**Kept:** `run.py`, `pygen/pygen_src/**`, the six `scripts/*.py` modules
-`run.py` imports at load time, `scripts/dino_convert.py`, `yaml/simulator.yaml`,
-`target/rv64i/testlist.yaml`.
-
-**Dropped:** `.venv` (226M, rebuilt from `requirements.txt`), `docs` (18M),
-`.git` (11M), `sample/` (2.1M), `src/` + `test/` + `euvm/` (the SV/UVM flow),
-`pygen/experimental/` (unused prototype), `cov.py` and coverage/lint/CI config,
-the non-rv64i `target/` dirs, and `yaml/iss.yaml` + `scripts/link.ld` (only used
-by `run.py`'s `gcc_compile`/`iss_sim` steps — this flow runs `--steps gen`, and
-`run_cosim.sh` does its own linking with `-Ttext=0x80000000`).
-
-`pygen/pygen_src/target/` still has every ISA variant (~64K), so `TARGET=rv32imc`
-only needs that target's `testlist.yaml`, copied from upstream riscv-dv.
-
-**Verified:** regenerating with `SEED=14674157` reproduced the original
-`riscv-dv2/out_2026-07-16/` output byte-for-byte, both raw and DINO-converted,
-before that checkout was removed.
-
-**Local change vs upstream:** `scripts/dino_convert.py` is not an upstream file.
-Nothing else was modified, so re-vendoring from a newer riscv-dv means
-re-copying the "kept" list.
+Cloning fresh, patching, and generating with `SEED=14674157` reproduces the
+output of the original `riscv-dv2` working copy byte-for-byte, raw and
+DINO-converted. Re-running is idempotent.

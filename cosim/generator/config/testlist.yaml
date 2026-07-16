@@ -1,0 +1,23 @@
+# RV64I-only regression list for DINO.
+# No M/F/D, no compressed, no CSR/privileged/exception instructions --
+# straight-line RV64I arithmetic + load/store streams only.
+
+- test: riscv_rv64i_dino_test
+  description: >
+    RV64I-only instruction stream for DINO's single-cycle CPU: arithmetic,
+    logic, and load/store, no branches/jumps, no CSR/fence/privileged/
+    exception instructions, no compressed instructions.
+  iterations: 10
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=250
+    +num_of_sub_program=0
+    +no_branch_jump=1
+    +no_fence=1
+    +no_csr_instr=1
+    +no_wfi=1
+    +no_ebreak=1
+    +no_dret=1
+    +no_directed_instr=1
+    +boot_mode=m
+  rtl_test: core_base_test
