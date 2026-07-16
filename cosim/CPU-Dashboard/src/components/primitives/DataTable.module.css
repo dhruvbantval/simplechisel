@@ -1,0 +1,92 @@
+.scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.table th,
+.table td {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.table th {
+  font-weight: 500;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  border-bottom: 1px solid var(--hairline);
+  white-space: nowrap;
+}
+
+/* Hairline row separators — no vertical rules, no zebra fills. */
+.table tbody tr {
+  border-bottom: 1px solid var(--hairline);
+}
+.table tbody tr:last-child {
+  border-bottom: 0;
+}
+
+.table td {
+  color: var(--text);
+}
+
+.right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.truncate {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.headInner {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.headBtn {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+.headBtn:hover {
+  color: var(--text);
+}
+
+.sortIcon {
+  font-size: 9px;
+  color: var(--text-faint);
+}
+.sortIcon[data-active='true'] {
+  color: var(--accent-strong);
+}
+
+.clickable {
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+.clickable:hover {
+  background: var(--bg-hover);
+}
+
+.empty {
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--text-faint);
+}

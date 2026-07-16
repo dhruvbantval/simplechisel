@@ -1,0 +1,75 @@
+.runCell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.activeDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+.activeRow {
+  background: var(--bg-selected);
+}
+
+.pf {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-variant-numeric: tabular-nums;
+}
+.pass {
+  color: var(--success);
+}
+.fail {
+  color: var(--danger);
+}
+
+.del {
+  display: inline-flex;
+  padding: var(--space-1);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+:global(tr):hover .del,
+:global(tr):focus-within .del {
+  opacity: 1;
+}
+.del:hover {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+}
+.confirmYes,
+.confirmNo {
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline-strong);
+  background: transparent;
+  font-size: var(--text-xs);
+}
+.confirmYes {
+  color: var(--danger);
+  border-color: var(--danger-border);
+}
+.confirmYes:hover {
+  background: var(--danger-bg);
+}
+.confirmNo {
+  color: var(--text-muted);
+}
+.confirmNo:hover {
+  background: var(--bg-hover);
+}

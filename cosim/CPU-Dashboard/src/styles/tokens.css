@@ -1,0 +1,90 @@
+/*
+ * Design tokens — the single source of truth for the dashboard's visual language.
+ * Deep-navy theme anchored on #0b3354. Hierarchy comes from space, hairlines, and
+ * type — never from gradients or shadows. State colors are softened (not pure
+ * traffic-light) so the UI reads calm and human; the accent is a sky blue drawn
+ * from the same hue family as the anchor.
+ *
+ * A light theme can be added later by overriding these vars under a [data-theme]
+ * selector; nothing below hardcodes a color outside this file.
+ */
+
+:root {
+  /* Surfaces — #0b3354 is the main background; raised zones step lighter, inset
+     zones step darker, all within the same blue hue. */
+  --bg: #0b2e4a;
+  --bg-raised: #0f3f66;
+  --bg-inset: #082943;
+  --bg-hover: rgba(116, 180, 234, 0.1);
+  --bg-selected: rgba(116, 180, 234, 0.16);
+
+  /* Lines — a lighter blue than the background so hairlines stay visible and do
+     the work that boxes would otherwise do. */
+  --hairline: #1f4f76;
+  --hairline-strong: #356d98;
+
+  /* Text — soft light blues tuned for contrast on the mid-navy background. */
+  --text: #cdd9e6;
+  --text-strong: #f4f9fd;
+  --text-muted: #9db3c6;
+  --text-faint: #7890a3;
+
+  /* Accent — sky blue from the anchor's hue family; interactivity / active only. */
+  --accent: #4d9fe0;
+  --accent-strong: #74b4ea;
+  --accent-bg: rgba(77, 159, 224, 0.12);
+  --accent-border: rgba(77, 159, 224, 0.4);
+
+  /* Semantic state — softened, used only when the data is in that state. */
+  --success: #4cc38a;
+  --success-bg: rgba(76, 195, 138, 0.13);
+  --success-border: rgba(76, 195, 138, 0.32);
+
+  --warning: #e2b04f;
+  --warning-bg: rgba(226, 176, 79, 0.13);
+  --warning-border: rgba(226, 176, 79, 0.3);
+
+  --danger: #ef7a6f;
+  --danger-bg: rgba(239, 122, 111, 0.13);
+  --danger-border: rgba(239, 122, 111, 0.32);
+
+  --neutral-bg: rgba(140, 162, 184, 0.1);
+  --neutral-border: rgba(140, 162, 184, 0.24);
+
+  /* Spacing scale (4px base) — generous, to let content breathe. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* Radii — gently rounded so edges feel soft rather than rigid. */
+  --radius-sm: 5px;
+  --radius: 8px;
+  --radius-lg: 12px;
+
+  /* Type */
+  --font-sans: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', Consolas, 'SF Mono', Menlo, monospace;
+
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 16px;
+  --text-lg: 20px;
+  --text-xl: 26px;
+  --text-2xl: 34px;
+
+  /* Layout */
+  --sidebar-w: 232px;
+  --content-max: 1180px;
+  --drawer-w: 520px;
+  --z-drawer: 50;
+  --z-tooltip: 80;
+  --z-toast: 90;
+
+  color-scheme: dark;
+}

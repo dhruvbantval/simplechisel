@@ -1,0 +1,96 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-drawer);
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(1, 4, 9, 0.6);
+  animation: fade 0.15s ease;
+}
+
+.panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: var(--drawer-w);
+  max-width: 100%;
+  background: var(--bg-raised);
+  border-left: 1px solid var(--hairline-strong);
+  display: flex;
+  flex-direction: column;
+  outline: none;
+  animation: slide 0.18s ease;
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.headText {
+  min-width: 0;
+}
+
+.title {
+  font-size: var(--text-lg);
+}
+
+.subtitle {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.close {
+  flex: none;
+  display: inline-flex;
+  padding: var(--space-1);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+.close:hover {
+  background: var(--bg-hover);
+  color: var(--text-strong);
+}
+
+.body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--space-5);
+}
+
+@keyframes slide {
+  from {
+    transform: translateX(16px);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .panel {
+    width: 100%;
+    border-left: 0;
+  }
+}

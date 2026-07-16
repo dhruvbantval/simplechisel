@@ -1,0 +1,97 @@
+.scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.matrix {
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.matrix th,
+.matrix td {
+  padding: var(--space-3);
+  text-align: center;
+}
+
+.corner,
+.colHead,
+.rateHead {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--hairline);
+  white-space: nowrap;
+}
+.corner {
+  text-align: left;
+}
+.rateHead {
+  text-align: left;
+}
+
+.rowHead {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.cell {
+  border-bottom: 1px solid var(--hairline);
+}
+
+.dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.caught {
+  color: var(--success);
+  background: var(--success-bg);
+}
+.slipped {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+.absent {
+  color: var(--text-faint);
+  background: transparent;
+}
+
+.rate {
+  border-bottom: 1px solid var(--hairline);
+  white-space: nowrap;
+}
+.rate {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.rateBarTrack {
+  width: 80px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-inset);
+  overflow: hidden;
+}
+.rateBarFill {
+  display: block;
+  height: 100%;
+  background: var(--success);
+  border-radius: 999px;
+}
+.rateBarFill[data-zero='true'] {
+  background: var(--danger);
+}
+.rateNum {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
