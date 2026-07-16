@@ -56,11 +56,19 @@ object GCD extends App {
     args = Array(
       "--target-dir", outDir.toString
     ),
-    // Keep your FIRRTL/MLIR options unchanged.
+    // "Nicest" SystemVerilog: preserve original Chisel constructs as much as possible.
     firtoolOpts = Array(
-      "-disable-all-randomization",
-      "-strip-debug-info",
-      "-default-layer-specialization=enable"
+      "-O=debug",                                // minimal optimization -> modules stay close to source
+      "--preserve-aggregate=all",                // keep vectors AND bundles as packed arrays / structs
+      "--scalarize-public-modules=false",        // keep aggregate ports on the top/public module
+      "--scalarize-ext-modules=false",           // keep aggregate ports on blackboxes too
+      "--preserve-values=named",                 // keep meaningful signal names (use =all to keep everything)
+      "--emit-separate-always-blocks",           // one always block per register
+      "--lowering-options=disallowMuxInlining",  // Mux/when stay as their own named wires
+      "-default-layer-specialization=enable",
+      "-disable-all-randomization"
+      // NOTE: debug info kept (no -strip-debug-info) -> // src/...scala:line locators per signal.
+      // NOTE: deduplication is ON by default (don't pass --no-dedup) -> fewer Foo_1/Foo_2 copies.
     )
   )
 }
