@@ -1,0 +1,8 @@
+# Generation-only deps. The upstream riscv-dv requirements.txt also pulls in
+# Sphinx/rst2pdf/flake8, which only the docs and lint targets need -- neither
+# is vendored here.
+PyYAML
+bitstring
+pyvsc
+tabulate
+pandas
