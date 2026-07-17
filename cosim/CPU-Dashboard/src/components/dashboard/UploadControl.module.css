@@ -1,0 +1,93 @@
+.btnWrap {
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.dropWrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 420px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--accent);
+  color: #fff;
+  border: 0;
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+.button:hover {
+  background: var(--accent-strong);
+}
+.button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-6);
+  width: 100%;
+  background: var(--bg-inset);
+  border: 1px dashed var(--hairline-strong);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+.dropzone:hover,
+.dragging {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--text);
+}
+
+.dropTitle {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-strong);
+  margin-top: var(--space-2);
+}
+.dropHint {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+.errors {
+  border: 1px solid var(--danger-border);
+  background: var(--danger-bg);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  text-align: left;
+}
+.errorsHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--danger);
+  margin-bottom: var(--space-2);
+}
+.errorList {
+  margin: 0;
+  padding-left: var(--space-5);
+  font-size: var(--text-xs);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

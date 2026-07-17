@@ -1,0 +1,54 @@
+.app {
+  display: flex;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.main {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* The single vertical scroll region. The page itself never scrolls, so there's
+   no whole-page scrollbar — only this area scrolls, and only when content is tall. */
+.scrollArea {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.content {
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: var(--space-3) var(--space-6) var(--space-8);
+}
+
+.emptyActions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.sampleLink {
+  background: none;
+  border: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.sampleLink:hover {
+  color: var(--text);
+}
+
+@media (max-width: 860px) {
+  .content {
+    padding: var(--space-3) var(--space-4) var(--space-7);
+  }
+}

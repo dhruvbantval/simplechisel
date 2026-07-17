@@ -1,0 +1,68 @@
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: var(--space-6) var(--space-8);
+}
+
+/* Stats flow on whitespace alone — no dividers, no tiles. */
+.stat {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 96px;
+}
+
+.value {
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.label {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.labelText {
+  border-bottom: 1px dotted transparent;
+}
+.stat:hover .labelText {
+  border-bottom-color: var(--hairline-strong);
+}
+
+.sub {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+/* Tones — only used when the number itself represents a state. */
+.success {
+  color: var(--success);
+}
+.danger {
+  color: var(--danger);
+}
+.warning {
+  color: var(--warning);
+}
+.accent {
+  color: var(--accent-strong);
+}
+.default {
+  color: var(--text-strong);
+}
+
+@media (max-width: 720px) {
+  .row {
+    gap: var(--space-5) var(--space-6);
+  }
+  .value {
+    font-size: var(--text-xl);
+  }
+}

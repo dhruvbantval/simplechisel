@@ -1,0 +1,129 @@
+.subtitle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.statusRow {
+  margin-bottom: var(--space-4);
+}
+
+/* The lead callout reads as an editorial aside — a soft accent bar and a tinted
+   wash, not a hard-bordered box. */
+.callout {
+  padding: var(--space-3) var(--space-4);
+  background: var(--danger-bg);
+  border-left: 3px solid var(--danger);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  margin-bottom: var(--space-6);
+}
+.calloutTitle {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-strong);
+  margin-bottom: var(--space-1);
+}
+.calloutBody {
+  font-size: var(--text-sm);
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.traceHead {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-strong);
+  margin-bottom: var(--space-4);
+}
+
+.trace {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.instr {
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--hairline);
+}
+.instr:first-child {
+  border-top: 0;
+}
+.instrPass {
+  opacity: 0.6;
+}
+
+.instrHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.instrNum {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xs);
+  min-width: 28px;
+}
+.mnemonic {
+  font-weight: 600;
+  color: var(--text-strong);
+  min-width: 48px;
+}
+
+.regs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  flex: 1 1 auto;
+}
+/* Register tags read as quiet inline annotations, not bordered chips. */
+.reg {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+}
+.regRole {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+
+.instrStatus {
+  margin-left: auto;
+}
+
+.compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+  margin-top: var(--space-3);
+  padding-left: var(--space-5);
+}
+.compareCol {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.compareLabel {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-bottom: var(--space-1);
+}
+.expected {
+  color: var(--success);
+  font-size: var(--text-md);
+}
+.got {
+  color: var(--danger);
+  font-size: var(--text-md);
+}
+.hex {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
