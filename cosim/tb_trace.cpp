@@ -11,75 +11,16 @@
 #include <vector>
 
 static uint64_t get_reg(VSingleCycleCPU___024root* root, int idx) {
-    switch (idx) {
-    case 0: return root->SingleCycleCPU__DOT__registers__DOT__regs_0;
-    case 1: return root->SingleCycleCPU__DOT__registers__DOT__regs_1;
-    case 2: return root->SingleCycleCPU__DOT__registers__DOT__regs_2;
-    case 3: return root->SingleCycleCPU__DOT__registers__DOT__regs_3;
-    case 4: return root->SingleCycleCPU__DOT__registers__DOT__regs_4;
-    case 5: return root->SingleCycleCPU__DOT__registers__DOT__regs_5;
-    case 6: return root->SingleCycleCPU__DOT__registers__DOT__regs_6;
-    case 7: return root->SingleCycleCPU__DOT__registers__DOT__regs_7;
-    case 8: return root->SingleCycleCPU__DOT__registers__DOT__regs_8;
-    case 9: return root->SingleCycleCPU__DOT__registers__DOT__regs_9;
-    case 10: return root->SingleCycleCPU__DOT__registers__DOT__regs_10;
-    case 11: return root->SingleCycleCPU__DOT__registers__DOT__regs_11;
-    case 12: return root->SingleCycleCPU__DOT__registers__DOT__regs_12;
-    case 13: return root->SingleCycleCPU__DOT__registers__DOT__regs_13;
-    case 14: return root->SingleCycleCPU__DOT__registers__DOT__regs_14;
-    case 15: return root->SingleCycleCPU__DOT__registers__DOT__regs_15;
-    case 16: return root->SingleCycleCPU__DOT__registers__DOT__regs_16;
-    case 17: return root->SingleCycleCPU__DOT__registers__DOT__regs_17;
-    case 18: return root->SingleCycleCPU__DOT__registers__DOT__regs_18;
-    case 19: return root->SingleCycleCPU__DOT__registers__DOT__regs_19;
-    case 20: return root->SingleCycleCPU__DOT__registers__DOT__regs_20;
-    case 21: return root->SingleCycleCPU__DOT__registers__DOT__regs_21;
-    case 22: return root->SingleCycleCPU__DOT__registers__DOT__regs_22;
-    case 23: return root->SingleCycleCPU__DOT__registers__DOT__regs_23;
-    case 24: return root->SingleCycleCPU__DOT__registers__DOT__regs_24;
-    case 25: return root->SingleCycleCPU__DOT__registers__DOT__regs_25;
-    case 26: return root->SingleCycleCPU__DOT__registers__DOT__regs_26;
-    case 27: return root->SingleCycleCPU__DOT__registers__DOT__regs_27;
-    case 28: return root->SingleCycleCPU__DOT__registers__DOT__regs_28;
-    case 29: return root->SingleCycleCPU__DOT__registers__DOT__regs_29;
-    case 30: return root->SingleCycleCPU__DOT__registers__DOT__regs_30;
-    default: return root->SingleCycleCPU__DOT__registers__DOT__regs_31;
-    }
+    const int word = idx * 2;
+    const uint64_t lo = root->SingleCycleCPU__DOT__registers__DOT__regs[word];
+    const uint64_t hi = root->SingleCycleCPU__DOT__registers__DOT__regs[word + 1];
+    return lo | (hi << 32);
 }
 
 static void zero_regs(VSingleCycleCPU___024root* root) {
-    root->SingleCycleCPU__DOT__registers__DOT__regs_0 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_1 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_2 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_3 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_4 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_5 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_6 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_7 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_8 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_9 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_10 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_11 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_12 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_13 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_14 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_15 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_16 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_17 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_18 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_19 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_20 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_21 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_22 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_23 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_24 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_25 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_26 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_27 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_28 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_29 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_30 = 0;
-    root->SingleCycleCPU__DOT__registers__DOT__regs_31 = 0;
+    for (int i = 0; i < 64; ++i) {
+        root->SingleCycleCPU__DOT__registers__DOT__regs[i] = 0;
+    }
 }
 
 static std::vector<uint32_t> load_imem(const char* path) {
