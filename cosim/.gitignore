@@ -1,5 +1,4 @@
 build/
 __pycache__/
-# Programs written into asm_tests/ by generator/gen_tests.sh. Regenerable, so
-# not committed -- the hand-written tests (01_add_sub.S etc.) stay tracked.
+# Programs written into asm_tests/ by generator/gen_tests.sh.
 asm_tests/riscv_*_test_*.S
