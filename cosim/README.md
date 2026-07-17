@@ -19,6 +19,42 @@ JSON files under `cosim/build/results/<test_name>/result.json`, and writes one c
 Folder search is flat by default. If the generated tests are nested in subfolders, add
 `RECURSIVE=1`.
 
+To run the automated bug-injection campaign:
+
+```bash
+STEPS=80 JOBS=4 python3 cosim/mutation/run_mutation_campaign.py
+```
+
+That script edits one CPU bug into the Chisel source, runs the normal cosim flow, writes a
+campaign JSON, and restores the original source before trying the next bug. The combined mutation
+summary is written to `cosim/build/campaigns/mutation_campaign_index.json`.
+
+To choose one bug target by CPU function:
+
+```bash
+STEPS=80 JOBS=4 python3 cosim/mutation/run_mutation_campaign.py --function addi
+STEPS=80 JOBS=4 python3 cosim/mutation/run_mutation_campaign.py --function sub
+STEPS=80 JOBS=4 python3 cosim/mutation/run_mutation_campaign.py --function branch
+```
+
+To choose from a numbered menu:
+
+```bash
+python3 cosim/mutation/run_mutation_campaign.py --interactive
+```
+
+Supported function names are listed with:
+
+```bash
+python3 cosim/mutation/run_mutation_campaign.py --list
+```
+
+To check which mutation would run without starting the simulator:
+
+```bash
+python3 cosim/mutation/run_mutation_campaign.py --function addi --dry-run
+```
+
 For streaming comparison, use:
 
 ```bash
