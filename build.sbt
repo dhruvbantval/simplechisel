@@ -4,7 +4,7 @@ ThisBuild / scalaVersion     := "2.13.12"
 ThisBuild / version          := "0.1.0"
 ThisBuild / organization     := "%ORGANIZATION%"
 
-val chiselVersion = "7.0.0-RC1"
+val chiselVersion = "7.3.0"
 
 lazy val root = (project in file("."))
   .enablePlugins(ScapegoatSbtPlugin)
@@ -12,6 +12,9 @@ lazy val root = (project in file("."))
     name := "%NAME%",
     libraryDependencies ++= Seq(
       "org.chipsalliance" %% "chisel" % chiselVersion,
+      // Override the firtool that Chisel bundles by default with a newer one.
+      // firtool-resolver extracts the firtool binary from this jar at runtime.
+      "org.chipsalliance" % "llvm-firtool" % "1.150.2",
       "org.scalatest" %% "scalatest" % "3.2.19" % "test",
     ),
     scalacOptions ++= Seq(

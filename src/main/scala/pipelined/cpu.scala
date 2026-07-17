@@ -396,7 +396,18 @@ object PipelinedNoDebug extends App {
     args = Array(
       "--target-dir", outDir.toString
     ),
-    firtoolOpts = Array("-disable-all-randomization", "-default-layer-specialization=enable",  "--lowering-options=disallowPackedArrays,disallowLocalVariables")
+    // Preserve original Chisel constructs as much as possible (keeps // src locators).
+    firtoolOpts = Array(
+      "-O=debug",                                // minimal optimization -> modules stay close to source
+      "--preserve-aggregate=all",                // keep vectors AND bundles as packed arrays / structs
+      "--scalarize-public-modules=false",        // keep aggregate ports on the top/public module
+      "--scalarize-ext-modules=false",           // keep aggregate ports on blackboxes too
+      "--preserve-values=named",                 // keep meaningful signal names
+      "--emit-separate-always-blocks",           // one always block per register
+      "--lowering-options=disallowMuxInlining",  // Mux/when stay as their own named wires
+      "-default-layer-specialization=enable",
+      "-disable-all-randomization"
+    )
   )
 }
 
@@ -414,7 +425,19 @@ object PipelinedDebug extends App {
     args = Array(
       "--target-dir", outDir.toString
     ),
-    firtoolOpts = Array("-disable-all-randomization", "-strip-debug-info", "-default-layer-specialization=enable",  "--lowering-options=disallowPackedArrays,disallowLocalVariables")
+    // Preserve original Chisel constructs; _d build strips // src locators for cleaner output.
+    firtoolOpts = Array(
+      "-O=debug",                                // minimal optimization -> modules stay close to source
+      "--preserve-aggregate=all",                // keep vectors AND bundles as packed arrays / structs
+      "--scalarize-public-modules=false",        // keep aggregate ports on the top/public module
+      "--scalarize-ext-modules=false",           // keep aggregate ports on blackboxes too
+      "--preserve-values=named",                 // keep meaningful signal names
+      "--emit-separate-always-blocks",           // one always block per register
+      "--lowering-options=disallowMuxInlining",  // Mux/when stay as their own named wires
+      "-strip-debug-info",                       // drop // src locators (matches _d output dir)
+      "-default-layer-specialization=enable",
+      "-disable-all-randomization"
+    )
   )
 }
 object PipelinedDualIssueNoDebug extends App {
@@ -431,7 +454,18 @@ object PipelinedDualIssueNoDebug extends App {
     args = Array(
       "--target-dir", outDir.toString
     ),
-    firtoolOpts = Array("-disable-all-randomization", "-default-layer-specialization=enable",  "--lowering-options=disallowPackedArrays,disallowLocalVariables")
+    // "Nicest" SystemVerilog: preserve original Chisel constructs as much as possible.
+    firtoolOpts = Array(
+      "-O=debug",                                // minimal optimization -> modules stay close to source
+      "--preserve-aggregate=all",                // keep vectors AND bundles as packed arrays / structs
+      "--scalarize-public-modules=false",        // keep aggregate ports on the top/public module
+      "--scalarize-ext-modules=false",           // keep aggregate ports on blackboxes too
+      "--preserve-values=named",                 // keep meaningful signal names
+      "--emit-separate-always-blocks",           // one always block per register
+      "--lowering-options=disallowMuxInlining",  // Mux/when stay as their own named wires
+      "-default-layer-specialization=enable",
+      "-disable-all-randomization"
+    )
   )
 }
 
@@ -449,6 +483,18 @@ object PipelinedDualIssueDebug extends App {
     args = Array(
       "--target-dir", outDir.toString
     ),
-    firtoolOpts = Array("-disable-all-randomization", "-strip-debug-info", "-default-layer-specialization=enable",  "--lowering-options=disallowPackedArrays,disallowLocalVariables")
+    // Preserve original Chisel constructs; _d build strips // src locators for cleaner output.
+    firtoolOpts = Array(
+      "-O=debug",                                // minimal optimization -> modules stay close to source
+      "--preserve-aggregate=all",                // keep vectors AND bundles as packed arrays / structs
+      "--scalarize-public-modules=false",        // keep aggregate ports on the top/public module
+      "--scalarize-ext-modules=false",           // keep aggregate ports on blackboxes too
+      "--preserve-values=named",                 // keep meaningful signal names
+      "--emit-separate-always-blocks",           // one always block per register
+      "--lowering-options=disallowMuxInlining",  // Mux/when stay as their own named wires
+      "-strip-debug-info",                       // drop // src locators (matches _d output dir)
+      "-default-layer-specialization=enable",
+      "-disable-all-randomization"
+    )
   )
 }
