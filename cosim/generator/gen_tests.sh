@@ -26,6 +26,24 @@ TESTS="${TESTS:-10}"
 DEST="${DEST:-$COSIM_DIR/asm_tests}"
 VENV="${VENV:-$GEN_DIR/.venv}"
 
+# Instruction count per test and the instruction-mix "type". These parameterize
+# the generated testlist so the web UI (and CLI) can ask for different programs
+# without hand-editing config/testlist.yaml. All presets stay branch/jump-free:
+# dino_convert.py flattens the program and drops labels, so a branch target
+# would vanish and the program wouldn't assemble.
+#   mixed      arithmetic + logic + load/store  (default)
+#   arithmetic register ALU ops only, no memory (+no_load_store=1)
+INSTR_CNT="${INSTR_CNT:-250}"
+TYPE="${TYPE:-mixed}"
+case "$TYPE" in
+    mixed)      MIX_OPTS="" ;;
+    arithmetic) MIX_OPTS="+no_load_store=1" ;;
+    *)
+        echo "error: unknown TYPE '$TYPE' (want: mixed|arithmetic)" >&2
+        exit 2
+        ;;
+esac
+
 # Pinned so generation stays reproducible and patches/ keeps applying. Bumping
 # this may require refreshing the patch.
 DV_URL="${RISCV_DV_URL:-https://github.com/chipsalliance/riscv-dv.git}"
@@ -60,7 +78,8 @@ git -C "$DV_DIR" apply "$PATCH"
 
 # rv64i isn't an upstream target, so its testlist and core setting are ours.
 mkdir -p "$DV_DIR/target/rv64i" "$DV_DIR/pygen/pygen_src/target/rv64i"
-cp "$GEN_DIR/config/testlist.yaml" "$DV_DIR/target/rv64i/testlist.yaml"
+sed "s|+instr_cnt=250|+instr_cnt=$INSTR_CNT $MIX_OPTS|" \
+    "$GEN_DIR/config/testlist.yaml" > "$DV_DIR/target/rv64i/testlist.yaml"
 cp "$GEN_DIR/config/riscv_core_setting.py" \
    "$DV_DIR/pygen/pygen_src/target/rv64i/riscv_core_setting.py"
 
@@ -102,7 +121,7 @@ trap 'rm -rf "$RAW"' EXIT
 seed_args=()
 [[ -n "${SEED:-}" ]] && seed_args=(--seed "$SEED")
 
-echo "==> Generating $TESTS x $TEST ($TARGET)"
+echo "==> Generating $TESTS x $TEST ($TARGET, type=$TYPE, instr_cnt=$INSTR_CNT)"
 python3 "$DV_DIR/run.py" \
     --target "$TARGET" \
     --test "$TEST" \

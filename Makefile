@@ -12,20 +12,12 @@ MAIN_dualissue_nd      = dinocpu.pipelined.PipelinedDualIssueNoDebug
 
 PROFILES = gcd singlecyclecpu_nd singlecyclecpu_d pipelined_d pipelined_nd dualissue_d dualissue_nd
 
-.PHONY: all $(PROFILES) lint clean help cosim cosim-gen
+.PHONY: all $(PROFILES) lint clean help
 
 all: $(PROFILES)
 
 $(PROFILES):
 	sbt "runMain $(MAIN_$@)"
-
-# DINO <-> Spike co-simulation over cosim/asm_tests/ (see cosim/README.md)
-cosim:
-	bash cosim/run_cosim.sh
-
-# Generate RV64I tests via riscv-dv (needs python3.10-3.12; see cosim/generator/)
-cosim-gen:
-	bash cosim/generator/gen_tests.sh
 
 lint:
 	sbt scapegoat

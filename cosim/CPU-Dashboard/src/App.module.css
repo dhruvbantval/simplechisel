@@ -35,6 +35,20 @@
   gap: var(--space-3);
 }
 
+.primaryCta {
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-6);
+  cursor: pointer;
+}
+.primaryCta:hover {
+  background: var(--accent-strong);
+}
+
 .sampleLink {
   background: none;
   border: 0;

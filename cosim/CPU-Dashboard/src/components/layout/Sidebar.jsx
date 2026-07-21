@@ -11,7 +11,9 @@ import styles from './Sidebar.module.css'
 
 const NAV = [
   { id: 'overview', label: 'Overview', icon: 'overview', hint: 'KPIs and tests for the active run' },
-  { id: 'runs', label: 'Runs', icon: 'runs', hint: 'Every uploaded run; pick one to inspect' },
+  { id: 'tests', label: 'Tests', icon: 'folder', hint: 'Generate and browse saved test folders' },
+  { id: 'run', label: 'Run', icon: 'play', hint: 'Run a folder against the CPU; inject bugs' },
+  { id: 'runs', label: 'History', icon: 'runs', hint: 'Every past run; pick one to inspect' },
   { id: 'campaign', label: 'Campaign', icon: 'campaign', hint: 'Catch-rate of injected bugs across programs' },
 ]
 

@@ -1,0 +1,129 @@
+.panel {
+  position: sticky;
+  top: var(--space-4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  padding: var(--space-5);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-strong);
+}
+
+.title {
+  font-size: var(--text-md);
+  font-weight: 600;
+  margin: 0;
+}
+
+.blurb {
+  margin: var(--space-3) 0 var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.itemText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.itemName {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-strong);
+}
+
+.itemDesc {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+  padding-bottom: var(--space-3);
+}
+
+.injectedCount {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.resetBtn {
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.resetBtn:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+}
+.resetBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.injectBtn {
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.injectBtn:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fff;
+}
+.injectBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.injectBtn.injected {
+  color: var(--success);
+  background: var(--success-bg);
+  border-color: var(--success-border);
+  opacity: 1;
+}
+
+.empty {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}

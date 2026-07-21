@@ -1,0 +1,4 @@
+# Built dashboard copied here by serve.sh
+static/
+__pycache__/
+*.pyc

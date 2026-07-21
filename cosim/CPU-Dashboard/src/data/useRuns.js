@@ -57,6 +57,19 @@ export function useRuns() {
     return record
   }, [])
 
+  /* Store an already-in-memory run object (e.g. a fresh campaign JSON returned
+   * by the backend). Validates first so a malformed campaign gets the same clear
+   * message an upload would. This is the "no manual JSON" path. */
+  const addRun = useCallback(
+    async (run, fileName) => {
+      const { ok, errors } = validateRun(run)
+      if (!ok) return { ok, errors }
+      await addValidatedRun(run, fileName ?? `${run.runId}.json`)
+      return { ok: true, errors: [] }
+    },
+    [addValidatedRun],
+  )
+
   /* Read a File, parse + validate, store it. Returns { ok, errors }. */
   const addRunFromFile = useCallback(
     async (file) => {
@@ -114,6 +127,7 @@ export function useRuns() {
     activeId,
     activeRun,
     selectRun,
+    addRun,
     addRunFromFile,
     loadSamples,
     removeRun,

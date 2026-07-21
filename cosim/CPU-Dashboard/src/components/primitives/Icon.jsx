@@ -27,6 +27,16 @@ const PATHS = {
     </>
   ),
   check: <path d="m5 12 5 5L20 7" />,
+  generate: <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" />,
+  folder: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />,
+  play: <path d="M7 4v16l13-8L7 4Z" />,
+  bug: (
+    <>
+      <path d="M9 9V6a3 3 0 0 1 6 0v3" />
+      <rect x="7" y="9" width="10" height="9" rx="4" />
+      <path d="M3 13h4M17 13h4M3 18h4M17 18h4M12 18v3" />
+    </>
+  ),
   cross: (
     <>
       <path d="M6 6l12 12" />

@@ -13,6 +13,23 @@ BASE="${BASE:-0x80000000}"
 STEPS="${STEPS:-120}"
 JOBS="${JOBS:-4}"
 SPIKE_MEM="${SPIKE_MEM:-0x10000:0x10000,${BASE}:0x100000}"
+
+# RISC-V bare-metal toolchain prefix. Upstream riscv-dv docs assume
+# riscv64-unknown-elf-, but Homebrew's bottled toolchain is riscv64-elf-.
+# Auto-detect: honor an explicit RISCV_PREFIX, else whichever gcc is on PATH.
+if [[ -z "${RISCV_PREFIX:-}" ]]; then
+    if command -v riscv64-unknown-elf-gcc >/dev/null 2>&1; then
+        RISCV_PREFIX="riscv64-unknown-elf-"
+    elif command -v riscv64-elf-gcc >/dev/null 2>&1; then
+        RISCV_PREFIX="riscv64-elf-"
+    else
+        echo "[cosim] no RISC-V gcc found (riscv64-unknown-elf-gcc or riscv64-elf-gcc)" >&2
+        echo "[cosim] install one, e.g. 'brew install riscv64-elf-gcc riscv64-elf-binutils'" >&2
+        exit 3
+    fi
+fi
+RISCV_GCC="${RISCV_PREFIX}gcc"
+RISCV_OBJDUMP="${RISCV_PREFIX}objdump"
 LIVE="${LIVE:-0}"
 MUTATION_LABEL="${MUTATION_LABEL:-}"
 KEEP_GOING="${KEEP_GOING:-1}"
@@ -23,18 +40,28 @@ CAMPAIGN_JSON="${CAMPAIGN_JSON:-$CAMPAIGN_DIR/$RUN_ID.json}"
 mkdir -p "$DINO_BUILD" "$RESULT_DIR" "$CAMPAIGN_DIR"
 
 cd "$ROOT"
-echo "[cosim] generating debug Verilog"
-sbt "runMain dinocpu.SingleCycleCPUDebug"
 
-echo "[cosim] building DINO Verilator trace simulator"
-cp build_singlecyclecpu_nd/*.sv "$DINO_BUILD/"
-cp "$COSIM/tb_trace.cpp" "$DINO_BUILD/"
-(
-    cd "$DINO_BUILD"
-    verilator --cc --exe --build -j "$JOBS" -Wno-fatal \
-        --public-flat-rw --top-module SingleCycleCPU \
-        ./*.sv tb_trace.cpp -o dino_trace
-)
+# Rebuilding the CPU (sbt elaboration + Verilator) takes ~2 min and only matters
+# when the RTL changed. Repeated runs over the same CPU (e.g. the web UI firing
+# many Generate jobs) can reuse the built simulator. REBUILD=1 forces it;
+# REBUILD=0 skips; unset auto-skips when the simulator already exists.
+SIM_EXE="$DINO_BUILD/obj_dir/dino_trace"
+if [[ "${REBUILD:-auto}" == "1" || ( "${REBUILD:-auto}" == "auto" && ! -x "$SIM_EXE" ) ]]; then
+    echo "[cosim] generating debug Verilog"
+    sbt "runMain dinocpu.SingleCycleCPUDebug"
+
+    echo "[cosim] building DINO Verilator trace simulator"
+    cp build_singlecyclecpu_nd/*.sv "$DINO_BUILD/"
+    cp "$COSIM/tb_trace.cpp" "$DINO_BUILD/"
+    (
+        cd "$DINO_BUILD"
+        verilator --cc --exe --build -j "$JOBS" -Wno-fatal \
+            --public-flat-rw --top-module SingleCycleCPU \
+            ./*.sv tb_trace.cpp -o dino_trace
+    )
+else
+    echo "[cosim] reusing existing DINO simulator ($SIM_EXE); set REBUILD=1 to force"
+fi
 
 tests=()
 add_test_input() {
@@ -90,10 +117,10 @@ for test_path in "${tests[@]}"; do
     result_json="$out/result.json"
 
     echo "[cosim] assembling $name"
-    riscv64-unknown-elf-gcc -march=rv64i -mabi=lp64 \
+    "$RISCV_GCC" -march=rv64i -mabi=lp64 \
         -nostdlib -nostartfiles -Wl,-N -Wl,--no-relax -Ttext="$BASE" \
         -o "$elf" "$test_path"
-    riscv64-unknown-elf-objdump -d "$elf" > "$dump"
+    "$RISCV_OBJDUMP" -d "$elf" > "$dump"
     awk '/^[[:space:]]*[0-9a-fA-F]+:/ {print $2}' "$dump" > "$imem"
 
     if [[ "$LIVE" == "1" ]]; then

@@ -1,0 +1,18 @@
+[
+  {
+    "runId": "example_pass",
+    "timestamp": "2026-07-21T17:00:41Z",
+    "totalTests": 3,
+    "passed": 3,
+    "failed": 0,
+    "mutationLabel": null
+  },
+  {
+    "runId": "example_mutation",
+    "timestamp": "2026-07-21T17:01:35Z",
+    "totalTests": 4,
+    "passed": 0,
+    "failed": 4,
+    "mutationLabel": "negative_addi_extra_minus_one"
+  }
+]
