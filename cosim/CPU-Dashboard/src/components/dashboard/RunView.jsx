@@ -13,6 +13,7 @@ import Section from '../primitives/Section'
 import EmptyState from '../primitives/EmptyState'
 import Icon from '../primitives/Icon'
 import MutationsPanel from './MutationsPanel'
+import CpuPanel from './CpuPanel'
 import {
   getFolders, getInjected, getMutations, injectBug, pollJob, resetBugs, startRun,
 } from '../../data/api'
@@ -25,6 +26,7 @@ export default function RunView({ live, onRunReady, onNavigate }) {
 
   const [mutations, setMutations] = useState([])
   const [injected, setInjected] = useState([])
+  const [customCpu, setCustomCpu] = useState(null) // active custom CPU name, or null=built-in
 
   const [busy, setBusy] = useState(false)
   const [label, setLabel] = useState(null)
@@ -116,6 +118,7 @@ export default function RunView({ live, onRunReady, onNavigate }) {
     <div className={styles.layout}>
       <div className={styles.main}>
         <Section title="Run a test folder" description="Pick a folder and run it against the CPU. Any injected bugs apply.">
+          <CpuPanel onCpuChange={(name) => { setCustomCpu(name); if (name) setInjected([]) }} />
           {folders.length === 0 ? (
             <EmptyState
               icon="folder"
@@ -179,6 +182,7 @@ export default function RunView({ live, onRunReady, onNavigate }) {
           onInject={onInject}
           onReset={onReset}
           busy={busy}
+          customCpu={customCpu}
         />
       </aside>
     </div>

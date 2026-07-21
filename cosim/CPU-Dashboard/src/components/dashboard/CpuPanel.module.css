@@ -1,0 +1,115 @@
+.panel {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-6);
+}
+
+.row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.label {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.field select {
+  font: inherit;
+  font-size: var(--text-base);
+  color: var(--text-strong);
+  background: var(--bg-inset);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  min-width: 220px;
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.btn,
+.btnGhost {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font: inherit;
+  font-size: var(--text-sm);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+
+.btn {
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+}
+.btn:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btnGhost {
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--hairline-strong);
+}
+.btnGhost:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.btn:disabled,
+.btnGhost:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.hint {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.hint code {
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+  color: var(--text);
+  background: var(--bg-inset);
+  padding: 0 4px;
+  border-radius: 3px;
+}
+
+.ok {
+  margin: var(--space-3) 0 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--success);
+}
+
+.err {
+  margin: var(--space-3) 0 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--danger);
+}

@@ -52,6 +52,12 @@ export const getInjected = () => req('/api/injected')
 export const injectBug = (fn) => post('/api/inject', { function: fn })
 export const resetBugs = () => post('/api/reset', {})
 
+// Custom CPUs: upload .sv files, pick which CPU runs, download a compatible sample.
+export const getCpus = () => req('/api/cpus')
+export const uploadCpu = (name, files) => post('/api/cpu', { name, files }) // files:[{name,content}]
+export const selectCpu = (name) => post('/api/cpu/select', { name })
+export const getCpuSample = () => req('/api/cpu/sample')
+
 /*
  * Static runs bundled into the site (public/runs/). Used by a backend-less
  * deploy (e.g. Vercel static) so the dashboard still shows real data. Returns

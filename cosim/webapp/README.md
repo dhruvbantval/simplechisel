@@ -120,7 +120,32 @@ checkout -- src/main/scala/`).
 
 ## Custom CPU
 
-Not wired yet. Today the CPU is DINO's `SingleCycleCPU`, rebuilt from the Chisel
-source. Bringing your own core means a Verilog module exposing the same
-`io_imem_*` / `io_dmem_*` / register interface `tb_trace.cpp` drives; that's the
-planned next step.
+The **Run** view has a CPU selector. You can run test folders against the
+built-in DINO (Chisel, bug-injectable) or against **uploaded SystemVerilog**.
+
+- **Upload .sv** — pick one or more `.sv` files. They're built with Verilator in
+  place of the Chisel output and used for subsequent runs.
+- **Download sample** — grabs the current DINO as `dino-sample.sv` (all modules
+  in one file). Edit it and re-upload to test your own core.
+- Bug injection is disabled while a custom CPU is selected (bugs edit the
+  built-in Chisel source, which doesn't apply to uploaded Verilog). Switch back
+  to built-in to inject.
+
+**Interface contract.** The trace testbench (`tb_trace.cpp`) drives specific
+signals, so an uploaded CPU must:
+
+- have its **top module named `SingleCycleCPU`**;
+- expose the `io_imem_address` / `io_imem_instruction` / `io_imem_good` /
+  `io_imem_ready` and `io_dmem_*` (`valid`, `memread`, `memwrite`, `address`,
+  `maskmode`, `sext`, `writedata`, `readdata`, `good`) ports;
+- contain a register file reachable as `registers.regs[]` and a `pc` register
+  (read each cycle via Verilator `--public-flat-rw`).
+
+In practice this means a DINO-family core or one built to the same interface —
+not an arbitrary RISC-V core. Start from the downloaded sample; if the build or
+trace can't find those signals, the run fails with the Verilator/compile error
+in the log.
+
+API: `GET /api/cpus`, `POST /api/cpu {name, files:[{name,content}]}`,
+`POST /api/cpu/select {name}` (`"__builtin__"` for DINO), `GET /api/cpu/sample`.
+Uploaded CPUs live under `cosim/build/webapp/cpu/<name>/` and are git-ignored.

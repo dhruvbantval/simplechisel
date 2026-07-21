@@ -57,14 +57,13 @@ module SingleCycleCPU(	// src/main/scala/dino.scala:152:7
     _control_io_resultselect ? _immGen_io_sextImm : _alu_io_result;	// src/main/scala/dino.scala:155:26, :158:26, :159:26, :180:72
   wire [63:0] _registers_io_writedata_T_1 =
     _control_io_toreg ? io.dmem.readdata : _registers_io_writedata_T;	// src/main/scala/dino.scala:152:7, :155:26, :180:{32,72}
-  wire        isNegativeAddi =
-    instruction[6:0] == 7'h13 & funct3 == 3'h0 & _immGen_io_sextImm[63];	// src/main/scala/chisel3/util/Mux.scala:130:16, src/main/scala/dino.scala:159:26, :167:25, :173:27, :175:35, :203:{42,59,69,82,102}
-  wire [63:0] buggyImmediate = _immGen_io_sextImm - {63'h0, isNegativeAddi};	// src/main/scala/dino.scala:159:26, :203:82, :204:42
-  wire [63:0] _alu_io_inputx_T = _control_io_src1 ? pc : _registers_io_readdata1;	// src/main/scala/dino.scala:154:37, :155:26, :156:26, :207:23
+  wire [63:0] _alu_io_inputx_T = _control_io_src1 ? pc : _registers_io_readdata1;	// src/main/scala/dino.scala:154:37, :155:26, :156:26, :204:23
   wire [63:0] _alu_io_inputy_T_4 =
-    _control_io_src2 == 2'h1 ? buggyImmediate : {61'h0, _control_io_src2 == 2'h2, 2'h0};	// src/main/scala/chisel3/util/Mux.scala:130:16, src/main/scala/dino.scala:155:26, :204:42, :209:56, :210:56
+    _control_io_src2 == 2'h1
+      ? _immGen_io_sextImm
+      : {61'h0, _control_io_src2 == 2'h2, 2'h0};	// src/main/scala/chisel3/util/Mux.scala:130:16, src/main/scala/dino.scala:155:26, :159:26, :206:56, :207:56
   wire [63:0] _alu_io_inputy_T_5 =
-    _control_io_src2 == 2'h0 ? _registers_io_readdata2 : _alu_io_inputy_T_4;	// src/main/scala/chisel3/util/Mux.scala:130:16, src/main/scala/dino.scala:155:26, :156:26, :208:56
+    _control_io_src2 == 2'h0 ? _registers_io_readdata2 : _alu_io_inputy_T_4;	// src/main/scala/chisel3/util/Mux.scala:130:16, src/main/scala/dino.scala:155:26, :156:26, :205:56
   wire
     struct packed {logic [63:0] address; logic valid; logic good; logic [63:0] writedata; logic memread; logic memwrite; logic [1:0] maskmode; logic sext; logic [63:0] readdata; }
     _GEN_0 =
@@ -76,8 +75,8 @@ module SingleCycleCPU(	// src/main/scala/dino.scala:152:7
       memwrite: (_control_io_memop[0]),
       maskmode: (funct3[1:0]),
       sext: (~(funct3[2])),
-      readdata: io_dmem_readdata};	// src/main/scala/dino.scala:152:7, :155:26, :156:26, :158:26, :173:27, :212:19, :213:{19,22,39}, :214:20, :215:{17,36}, :216:{20,29}, :217:{16,19,26}, :218:21
-  assign io = '{imem: _GEN, dmem: _GEN_0};	// src/main/scala/dino.scala:152:7, :164:19, :165:17, :212:19, :213:19, :214:20, :215:17, :216:20, :217:16, :218:21
+      readdata: io_dmem_readdata};	// src/main/scala/dino.scala:152:7, :155:26, :156:26, :158:26, :173:27, :209:19, :210:{19,22,39}, :211:20, :212:{17,36}, :213:{20,29}, :214:{16,19,26}, :215:21
+  assign io = '{imem: _GEN, dmem: _GEN_0};	// src/main/scala/dino.scala:152:7, :164:19, :165:17, :209:19, :210:19, :211:20, :212:17, :213:20, :214:16, :215:21
   always @(posedge clock) begin	// src/main/scala/dino.scala:152:7
     if (reset)	// src/main/scala/dino.scala:152:7
       pc <= 64'h0;	// src/main/scala/dino.scala:154:37
@@ -125,7 +124,7 @@ module SingleCycleCPU(	// src/main/scala/dino.scala:152:7
   );	// src/main/scala/dino.scala:157:26
   ALU alu (	// src/main/scala/dino.scala:158:26
     .io_operation (_aluControl_io_operation),	// src/main/scala/dino.scala:157:26
-    .io_inputx    (_alu_io_inputx_T),	// src/main/scala/dino.scala:207:23
+    .io_inputx    (_alu_io_inputx_T),	// src/main/scala/dino.scala:204:23
     .io_inputy    (_alu_io_inputy_T_5),	// src/main/scala/chisel3/util/Mux.scala:130:16
     .io_result    (_alu_io_result)
   );	// src/main/scala/dino.scala:158:26

@@ -45,6 +45,8 @@ RUN_COSIM = COSIM / "run_cosim.sh"
 MUTATION_PY = COSIM / "mutation" / "run_mutation_campaign.py"
 CAMPAIGN_DIR = COSIM / "build" / "campaigns"
 TESTS_DIR = COSIM / "build" / "webapp" / "tests"   # the persistent test library
+CPU_DIR = COSIM / "build" / "webapp" / "cpu"        # uploaded custom CPUs
+BUILTIN_SV = ROOT / "build_singlecyclecpu_nd"       # DINO's generated Verilog
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 HOST = os.environ.get("HOST", "127.0.0.1")
@@ -107,6 +109,9 @@ class BugState:
         self.lock = threading.Lock()
 
     def inject(self, function: str) -> dict:
+        if CPUS.snapshot()["active"] is not None:
+            return {"ok": False,
+                    "error": "bugs apply to the built-in DINO; switch to it to inject"}
         with self.lock:
             name = RMC.FUNCTION_CHOICES.get(function)
             if not name:
@@ -161,6 +166,80 @@ class BugState:
 
 
 BUGS = BugState()
+
+
+# ------------------------------------------------------------- custom CPUs ---
+class CPUState:
+    """Which CPU runs are built against: the built-in DINO (Chisel, bug-injectable)
+    or an uploaded set of .sv files. Switching forces a rebuild."""
+
+    def __init__(self):
+        self.active: str | None = None   # None = built-in DINO
+        self.dirty = False               # active changed since last build
+        self.lock = threading.Lock()
+
+    def select(self, name: str | None) -> dict:
+        new = None if name in (None, "", "__builtin__") else safe_folder(name)
+        with self.lock:
+            if new != self.active:
+                self.active = new
+                self.dirty = True
+        if new is not None:
+            BUGS.reset()  # injected bugs edit Chisel source; they don't apply to custom SV
+        return self.snapshot()
+
+    def snapshot(self) -> dict:
+        with self.lock:
+            return {"active": self.active, "dirty": self.dirty,
+                    "isBuiltin": self.active is None}
+
+    def sv_dir(self) -> Path | None:
+        with self.lock:
+            return (CPU_DIR / self.active) if self.active else None
+
+    def mark_built(self):
+        with self.lock:
+            self.dirty = False
+
+
+CPUS = CPUState()
+
+
+def save_cpu(name: str, files: list[dict]) -> dict:
+    folder = safe_folder(name)
+    dest = CPU_DIR / folder
+    dest.mkdir(parents=True, exist_ok=True)
+    for f in dest.glob("*.sv"):
+        f.unlink()
+    saved = 0
+    has_top = False
+    for f in files:
+        fname = safe_folder(Path(f.get("name", "")).stem) + ".sv"
+        content = f.get("content", "")
+        (dest / fname).write_text(content)
+        saved += 1
+        if "module SingleCycleCPU" in content:
+            has_top = True
+    return {"name": folder, "files": saved, "hasTopModule": has_top}
+
+
+def list_cpus() -> list[dict]:
+    active = CPUS.snapshot()["active"]
+    out = [{"name": "__builtin__", "label": "Built-in DINO (Chisel)",
+            "builtin": True, "active": active is None, "files": 0}]
+    if CPU_DIR.exists():
+        for d in sorted(CPU_DIR.iterdir()):
+            if d.is_dir():
+                out.append({"name": d.name, "label": d.name, "builtin": False,
+                            "active": active == d.name, "files": len(list(d.glob("*.sv")))})
+    return out
+
+
+def builtin_sv() -> list[dict]:
+    """The built-in DINO Verilog, as a downloadable sample custom CPU."""
+    src = BUILTIN_SV if any(BUILTIN_SV.glob("*.sv")) else (COSIM / "build" / "dino_verilator")
+    return [{"name": f.name, "content": f.read_text(errors="replace")}
+            for f in sorted(src.glob("*.sv"))]
 
 
 # --------------------------------------------------------------------- jobs ---
@@ -266,20 +345,31 @@ def run_folder(job: Job):
         raise RuntimeError(f"folder '{folder}' has no tests")
 
     label = BUGS.label()
-    state = BUGS.snapshot()
+    bug_state = BUGS.snapshot()
+    cpu = CPUS.snapshot()
     env = child_env()
     env.update(STEPS=str(steps), JOBS="4", RUN_ID=job.id, KEEP_GOING="1")
+
+    sv_dir = CPUS.sv_dir()
+    if sv_dir is not None:
+        env["CPU_SV"] = str(sv_dir)
+        job.append(f"[cosim] custom CPU '{cpu['active']}'")
     if label:
         env["MUTATION_LABEL"] = label
-    if state["rtlDirty"]:
-        env["REBUILD"] = "1"   # CPU source changed (bug injected/reset) -> rebuild
-        job.append(f"[cosim] CPU changed ({label or 'clean'}); rebuilding")
+    # Rebuild when the CPU source changed (bug injected/reset) or the active CPU
+    # switched. Custom vs built-in produce different Verilog either way.
+    if bug_state["rtlDirty"] or cpu["dirty"]:
+        env["REBUILD"] = "1"
+        job.append("[cosim] CPU changed; rebuilding")
+
+    who = cpu["active"] or "built-in DINO"
     job.append(f"[cosim] running folder '{folder}' at {steps} steps vs Spike"
-               + (f" (bugs: {label})" if label else ""))
+               + f" — CPU: {who}" + (f", bugs: {label}" if label else ""))
     rc = stream(job, ["bash", str(RUN_COSIM), str(dest)], env, ROOT)
     if rc not in (0, 1):
         raise RuntimeError(f"run_cosim.sh exited {rc}")
     BUGS.mark_built()
+    CPUS.mark_built()
     job.run = load_campaign(job.id)
     job.append(f"[done] {job.run.get('passed')}/{job.run.get('totalTests')} passed")
 
@@ -407,6 +497,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(list_mutations())
         if path == "/api/injected":
             return self._json(BUGS.snapshot())
+        if path == "/api/cpus":
+            return self._json({"cpus": list_cpus(), **CPUS.snapshot()})
+        if path == "/api/cpu/sample":
+            return self._json({"name": "dino-sample", "files": builtin_sv()})
         if path == "/api/folders":
             return self._json(list_folders())
         if path.startswith("/api/folders/"):
@@ -437,6 +531,20 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(res, 200 if res.get("ok") else 400)
         if path == "/api/reset":
             return self._json(BUGS.reset())
+        if path == "/api/cpu":
+            body = self._body()
+            files = body.get("files", [])
+            if not files:
+                return self._json({"error": "no .sv files provided"}, 400)
+            saved = save_cpu(body.get("name", "custom"), files)
+            if not saved["hasTopModule"]:
+                return self._json(
+                    {"error": "no 'module SingleCycleCPU' found in the uploaded files; "
+                              "the top module must be named SingleCycleCPU", **saved}, 400)
+            CPUS.select(saved["name"])
+            return self._json({"ok": True, **saved, **CPUS.snapshot()})
+        if path == "/api/cpu/select":
+            return self._json(CPUS.select(self._body().get("name")))
         return self._json({"error": "not found"}, 404)
 
     def _serve_static(self, path):
@@ -462,6 +570,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     CAMPAIGN_DIR.mkdir(parents=True, exist_ok=True)
     TESTS_DIR.mkdir(parents=True, exist_ok=True)
+    CPU_DIR.mkdir(parents=True, exist_ok=True)
     threading.Thread(target=worker, daemon=True).start()
     print(f"[webapp] backend on http://{HOST}:{PORT}  (api at /api/*)")
     print("[webapp] tools: " + ", ".join(

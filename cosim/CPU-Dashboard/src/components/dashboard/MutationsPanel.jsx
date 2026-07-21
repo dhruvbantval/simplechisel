@@ -7,8 +7,9 @@
 import Icon from '../primitives/Icon'
 import styles from './MutationsPanel.module.css'
 
-export default function MutationsPanel({ mutations, injected, onInject, onReset, busy }) {
+export default function MutationsPanel({ mutations, injected, onInject, onReset, busy, customCpu }) {
   const injectedNames = new Set((injected ?? []).map((b) => b.name))
+  const locked = Boolean(customCpu)
 
   return (
     <div className={styles.panel}>
@@ -20,6 +21,13 @@ export default function MutationsPanel({ mutations, injected, onInject, onReset,
         Mutate the CPU with known defects. Bugs stack until you reset. Then run a
         folder — a good suite drops the pass rate, which is the bug being caught.
       </p>
+
+      {locked && (
+        <p className={styles.locked}>
+          Bugs edit the built-in DINO’s source, so they’re unavailable while the
+          custom CPU “{customCpu}” is selected. Switch the CPU back to built-in to inject.
+        </p>
+      )}
 
       <div className={styles.statusRow}>
         <span className={styles.injectedCount}>
@@ -52,8 +60,9 @@ export default function MutationsPanel({ mutations, injected, onInject, onReset,
                   type="button"
                   className={`${styles.injectBtn} ${isInjected ? styles.injected : ''}`}
                   onClick={() => onInject(m.function)}
-                  disabled={busy || isInjected}
-                  title={isInjected ? 'Already injected — reset to change' : `Inject "${m.name}"`}
+                  disabled={busy || isInjected || locked}
+                  title={locked ? 'Switch to built-in DINO to inject'
+                    : isInjected ? 'Already injected — reset to change' : `Inject "${m.name}"`}
                 >
                   {isInjected ? 'Injected' : 'Inject'}
                 </button>

@@ -45,13 +45,28 @@ cd "$ROOT"
 # when the RTL changed. Repeated runs over the same CPU (e.g. the web UI firing
 # many Generate jobs) can reuse the built simulator. REBUILD=1 forces it;
 # REBUILD=0 skips; unset auto-skips when the simulator already exists.
+# A custom CPU: point CPU_SV at a directory of .sv files whose top module is
+# SingleCycleCPU (same io_imem_*/io_dmem_* interface, and an internal
+# registers.regs[] + pc the trace testbench reads). When set, we build from
+# those files instead of regenerating the built-in DINO from Chisel.
+CPU_SV="${CPU_SV:-}"
 SIM_EXE="$DINO_BUILD/obj_dir/dino_trace"
 if [[ "${REBUILD:-auto}" == "1" || ( "${REBUILD:-auto}" == "auto" && ! -x "$SIM_EXE" ) ]]; then
-    echo "[cosim] generating debug Verilog"
-    sbt "runMain dinocpu.SingleCycleCPUDebug"
+    rm -f "$DINO_BUILD"/*.sv
+    if [[ -n "$CPU_SV" ]]; then
+        echo "[cosim] building custom CPU from $CPU_SV"
+        if ! ls "$CPU_SV"/*.sv >/dev/null 2>&1; then
+            echo "[cosim] no .sv files in $CPU_SV" >&2
+            exit 4
+        fi
+        cp "$CPU_SV"/*.sv "$DINO_BUILD/"
+    else
+        echo "[cosim] generating debug Verilog"
+        sbt "runMain dinocpu.SingleCycleCPUDebug"
+        cp build_singlecyclecpu_nd/*.sv "$DINO_BUILD/"
+    fi
 
-    echo "[cosim] building DINO Verilator trace simulator"
-    cp build_singlecyclecpu_nd/*.sv "$DINO_BUILD/"
+    echo "[cosim] building Verilator trace simulator"
     cp "$COSIM/tb_trace.cpp" "$DINO_BUILD/"
     (
         cd "$DINO_BUILD"
@@ -60,7 +75,7 @@ if [[ "${REBUILD:-auto}" == "1" || ( "${REBUILD:-auto}" == "auto" && ! -x "$SIM_
             ./*.sv tb_trace.cpp -o dino_trace
     )
 else
-    echo "[cosim] reusing existing DINO simulator ($SIM_EXE); set REBUILD=1 to force"
+    echo "[cosim] reusing existing simulator ($SIM_EXE); set REBUILD=1 to force"
 fi
 
 tests=()
