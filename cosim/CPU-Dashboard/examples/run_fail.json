@@ -1,0 +1,39 @@
+{
+  "runId": "example_branch_fail",
+  "timestamp": "2026-07-21T00:00:00Z",
+  "rtlDir": "cosim/build/bug_designs/branch_beq_bne_swapped",
+  "mutationLabel": "branch_beq_bne_swapped",
+  "totalTests": 1,
+  "passed": 0,
+  "failed": 1,
+  "tests": [
+    {
+      "testName": "branch_eq",
+      "passed": false,
+      "totalInstructions": 1,
+      "firstMismatchInstr": 1,
+      "instructions": [
+        {
+          "instrNumber": 1,
+          "mnemonic": "BEQ",
+          "passed": false,
+          "registers": {
+            "rd": null,
+            "rs1": "x5",
+            "rs2": "x6"
+          },
+          "imm": 8,
+          "goldenValue": null,
+          "dutValue": null,
+          "mismatch": {
+            "register": "PC",
+            "expected": -2147483632,
+            "got": -2147483636,
+            "hexExpected": "0x80000010",
+            "hexGot": "0x8000000C"
+          }
+        }
+      ]
+    }
+  ]
+}

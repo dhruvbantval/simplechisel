@@ -23,5 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 
-examples/
+examples/*
+!examples/run_pass.json
+!examples/run_fail.json
+!examples/run_mutation.json
 package-lock.json

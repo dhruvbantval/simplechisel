@@ -1,0 +1,67 @@
+{
+  "runId": "bug_alu_and_to_or",
+  "timestamp": "2026-07-21T16:53:09Z",
+  "rtlDir": "/mnt/c/Users/anast/Documents/GitHub/simplechisel/cosim/build/bug_designs/alu_and_to_or",
+  "mutationLabel": "alu_and_to_or",
+  "totalTests": 1,
+  "passed": 0,
+  "failed": 1,
+  "tests": [
+    {
+      "testName": "and_bug",
+      "passed": false,
+      "totalInstructions": 3,
+      "firstMismatchInstr": 3,
+      "instructions": [
+        {
+          "instrNumber": 1,
+          "mnemonic": "LUI",
+          "passed": true,
+          "registers": {
+            "rd": "x5",
+            "rs1": null,
+            "rs2": null
+          },
+          "imm": 1431654400,
+          "goldenValue": 1431654400,
+          "dutValue": 1431654400,
+          "mismatch": null
+        },
+        {
+          "instrNumber": 2,
+          "mnemonic": "LUI",
+          "passed": true,
+          "registers": {
+            "rd": "x6",
+            "rs1": null,
+            "rs2": null
+          },
+          "imm": 252641280,
+          "goldenValue": 252641280,
+          "dutValue": 252641280,
+          "mismatch": null
+        },
+        {
+          "instrNumber": 3,
+          "mnemonic": "AND",
+          "passed": false,
+          "registers": {
+            "rd": "x7",
+            "rs1": "x5",
+            "rs2": "x6"
+          },
+          "imm": null,
+          "goldenValue": 84213760,
+          "dutValue": 1600081920,
+          "mismatch": {
+            "register": "x7",
+            "expected": 84213760,
+            "got": 1600081920,
+            "hexExpected": "0x05050000",
+            "hexGot": "0x5F5F5000"
+          }
+        }
+      ]
+    }
+  ]
+}

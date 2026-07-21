@@ -70,6 +70,18 @@ To check which mutation would run without starting the simulator:
 python3 cosim/mutation/run_mutation_campaign.py --function addi --dry-run
 ```
 
+To run the full-loop demo:
+
+```bash
+STEPS=12 JOBS=4 python3 cosim/full_loop_demo.py --function and
+```
+
+That command injects an `AND -> OR` bug, runs DINO and Spike on
+`cosim/mutation/smoke_tests/and_bug.S`, writes the mutation JSON under
+`cosim/build/campaigns/`, then copies the latest mutation JSON into
+`cosim/CPU-Dashboard/examples/run_mutation.json`. Open the dashboard and click
+`Load sample data` to see the bug caught in the UI.
+
 For streaming comparison, use:
 
 ```bash

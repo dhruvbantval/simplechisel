@@ -1,0 +1,33 @@
+{
+  "runId": "example_clean_pass",
+  "timestamp": "2026-07-21T00:00:00Z",
+  "rtlDir": "cosim/build/dino_verilator",
+  "mutationLabel": null,
+  "totalTests": 1,
+  "passed": 1,
+  "failed": 0,
+  "tests": [
+    {
+      "testName": "simple_add",
+      "passed": true,
+      "totalInstructions": 1,
+      "firstMismatchInstr": null,
+      "instructions": [
+        {
+          "instrNumber": 1,
+          "mnemonic": "ADD",
+          "passed": true,
+          "registers": {
+            "rd": "x7",
+            "rs1": "x5",
+            "rs2": "x6"
+          },
+          "imm": null,
+          "goldenValue": 12,
+          "dutValue": 12,
+          "mismatch": null
+        }
+      ]
+    }
+  ]
+}
