@@ -1,0 +1,5 @@
+# Farm core — the only dependency the shared machinery has.
+# The record format, adapter contract, store and runner are pure stdlib; PyYAML is
+# needed to read farm.yaml (the experiment registry).
+#   pip install -r farm/requirements/core.txt
+PyYAML>=6.0            # tested with 6.0.3

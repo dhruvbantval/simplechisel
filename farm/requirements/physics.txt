@@ -1,0 +1,7 @@
+# Circuit experiment (Intern 3) — SPICE transient vs the closed-form solution.
+#   pip install -r farm/requirements/physics.txt
+#
+# Also needs the ngspice simulator (not a pip package):
+#   macOS:  brew install ngspice
+#   Debian: sudo apt install ngspice
+numpy>=1.24            # tested with 2.4.6

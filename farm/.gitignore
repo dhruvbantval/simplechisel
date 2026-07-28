@@ -1,0 +1,11 @@
+# Python venv holding the experiment dependencies (rebuild from requirements/)
+.venv/
+# Datasets fetched from third parties (MIT-BIH etc.) — not ours to redistribute
+data/
+# The record store + any experiment build output
+build/
+# Dashboard build copied here by serve.sh
+webapp/static/
+__pycache__/
+*.pyc
+experiments/controllers/uploads/

@@ -1,0 +1,6 @@
+# Control-loop experiment (Intern 1) — PID step response vs python-control.
+#   pip install -r farm/requirements/control.txt
+# No system packages needed.
+numpy>=1.24            # tested with 2.4.6
+scipy>=1.10            # tested with 1.17.1
+control>=0.10          # python-control; tested with 0.10.2

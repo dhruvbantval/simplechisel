@@ -1,0 +1,6 @@
+# Everything, for a machine that will run every experiment.
+# Prefer the per-experiment files if you only need one.
+-r core.txt
+-r control.txt
+-r ecg.txt
+-r physics.txt

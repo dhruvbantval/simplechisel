@@ -51,8 +51,28 @@ cd "$ROOT"
 # those files instead of regenerating the built-in DINO from Chisel.
 CPU_SV="${CPU_SV:-}"
 SIM_EXE="$DINO_BUILD/obj_dir/dino_trace"
-if [[ "${REBUILD:-auto}" == "1" || ( "${REBUILD:-auto}" == "auto" && ! -x "$SIM_EXE" ) ]]; then
-    rm -f "$DINO_BUILD"/*.sv
+
+# BUILD_ID identifies exactly which CPU the built simulator represents (commit +
+# injected bugs, or a custom-SV hash). We stamp it next to the sim and only reuse
+# the sim when the stamp matches what's being asked for. Without this, a fresh
+# process (whose in-memory "dirty" flag reset) would happily reuse a stale sim
+# built from a different CPU -- e.g. run a "clean" CPU against a still-buggy build.
+BUILD_ID="${BUILD_ID:-}"
+STAMP="$DINO_BUILD/.build_id"
+stamped="$(cat "$STAMP" 2>/dev/null || true)"
+
+need_build=0
+if [[ "${REBUILD:-auto}" == "1" ]]; then
+    need_build=1
+elif [[ ! -x "$SIM_EXE" ]]; then
+    need_build=1
+elif [[ -n "$BUILD_ID" && "$stamped" != "$BUILD_ID" ]]; then
+    need_build=1   # on-disk sim was built from a different CPU than requested
+fi
+[[ "${REBUILD:-auto}" == "0" ]] && need_build=0   # explicit skip wins
+
+if [[ "$need_build" == "1" ]]; then
+    rm -f "$DINO_BUILD"/*.sv "$STAMP"
     if [[ -n "$CPU_SV" ]]; then
         echo "[cosim] building custom CPU from $CPU_SV"
         if ! ls "$CPU_SV"/*.sv >/dev/null 2>&1; then
@@ -74,8 +94,9 @@ if [[ "${REBUILD:-auto}" == "1" || ( "${REBUILD:-auto}" == "auto" && ! -x "$SIM_
             --public-flat-rw --top-module SingleCycleCPU \
             ./*.sv tb_trace.cpp -o dino_trace
     )
+    echo "$BUILD_ID" > "$STAMP"   # remember which CPU this sim is
 else
-    echo "[cosim] reusing existing simulator ($SIM_EXE); set REBUILD=1 to force"
+    echo "[cosim] reusing existing simulator for '${BUILD_ID:-current CPU}'; set REBUILD=1 to force"
 fi
 
 tests=()

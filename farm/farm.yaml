@@ -1,0 +1,184 @@
+# The farm's experiment registry.
+#
+# This file is the single place that says what experiments exist and how to run
+# them. Adding a science = adding a block here plus one adapter module in
+# farm/adapters/ — no edits to the server, the runner, or the dashboard.
+#
+# Every experiment is the same shape:
+#     a design-under-test vs a golden reference -> pass/fail + one headline number
+# They share nothing else: each runs its own tools against its own inputs.
+#
+# Fields
+#   type          machine id; must match the adapter's `type`
+#   label         shown in the UI
+#   dut / golden  what is being tested, and what it is checked against
+#   inputs        what the test inputs are, in human terms
+#   metric        the headline number this domain reports
+#   ui            "cosim"    = the rich CPU UI (test folders, CPU upload, bugs)
+#                 "campaign" = a simple "run the whole case list" button
+#   requirements  pip requirements file for this experiment (optional)
+#   system        non-pip tools this experiment needs (optional)
+#   setup         one-off command to fetch data before first run (optional)
+#   cases         the campaign: each entry becomes one experiment record
+#   cases_from_corpus / corpus_glob / corpus_key
+#                 alternative to `cases`: one case per file in a directory
+#   generate      a script that synthesizes test cases on demand (the UI's
+#                 "Generate tests" button): script prints a JSON list of cases
+#                 (and may write input files); they're saved and run alongside
+#                 the configured cases. Fields: script, default (count), label.
+
+experiments:
+  - type: cosim
+    label: CPU cosim
+    dut: DINO CPU (Chisel -> Verilator)
+    golden: Spike
+    inputs: RISC-V programs (.S)
+    metric: instructions_matched
+    ui: cosim
+    system: [sbt, verilator, spike, riscv64-elf-gcc]
+    # cosim builds its own test folders from the Tests tab, so no static cases.
+
+  - type: compiler-diff
+    label: Compiler diff
+    dut: clang -O2
+    golden: clang -O0
+    inputs: C programs (.c)
+    metric: outputs_agree
+    ui: campaign
+    system: [clang]
+    cases_from_corpus: farm/adapters/corpus/compiler
+    corpus_glob: "*.c"
+    corpus_key: program
+    # Lets the website upload a C program and run it immediately.
+    upload:
+      label: C program
+      accept: ".c"
+      dir: farm/adapters/corpus/compiler
+      case_key: program
+    # "Generate tests" writes N random integer C programs (a tiny CSmith) and
+    # runs each at -O0 vs -O2; well-defined arithmetic, so any divergence is real.
+    generate:
+      label: random C programs
+      script: farm/experiments/generators/compiler_gen.py
+      default: 5
+
+  - type: control
+    label: Control loop (PID)
+    dut: your PID controller
+    golden: a 2nd-order step-response spec
+    inputs: a controller (Python or C) + gains
+    metric: overshoot
+    ui: campaign
+    requirements: farm/requirements/control.txt
+    # Upload a controller and run it right away. Adapters accept several shapes:
+    # a native Controller class, a simple-pid PID class, or C (PID.c + PID.h).
+    upload:
+      label: PID controller
+      accept: ".py,.c,.h"
+      multiple: true
+      dir: farm/experiments/controllers/uploads
+      case_key: controller
+      params:                       # fields the upload form collects alongside the file
+        - { name: kp, label: "kp", default: 2.0 }
+        - { name: ki, label: "ki", default: 1.0 }
+        - { name: kd, label: "kd", default: 0.5 }
+    # "Generate tests" sweeps N random gain sets through the reference controller
+    # (a stress test of the spec judge across the gain space).
+    generate:
+      label: random gain sweeps
+      script: farm/experiments/generators/control_gen.py
+      default: 5
+    # To test YOUR controller: copy farm/experiments/controllers/pid_reference.py,
+    # edit it, and point `controller:` at your file. Omit `controller:` to test the
+    # reference itself (a baseline that passes).
+    cases:
+      - name: gentle
+        controller: farm/experiments/controllers/pid_reference.py
+        kp: 2.0
+        ki: 1.0
+        kd: 0.5
+      - name: aggressive
+        controller: farm/experiments/controllers/pid_reference.py
+        kp: 5.0
+        ki: 2.0
+        kd: 1.0
+      # Drop a case like this pointing at your own file:
+      # - name: my controller
+      #   controller: farm/experiments/controllers/my_pid.py
+      #   kp: 2.0
+      #   ki: 1.0
+      #   kd: 0.5
+
+  - type: ecg
+    label: ECG R-peak detection
+    dut: NeuroKit2 R-peak detector
+    golden: cardiologist annotations (MIT-BIH)
+    inputs: ECG recordings
+    metric: sensitivity
+    ui: campaign
+    requirements: farm/requirements/ecg.txt
+    setup: farm/.venv/bin/python farm/experiments/ecg_fetch.py
+    # Upload your own recording: a WFDB record is three files that share a base
+    # name (205.dat + 205.hea + 205.atr). The .atr is the golden — the expert beat
+    # labels — so this is genuinely "your own annotated data".
+    upload:
+      label: ECG recording (WFDB .dat/.hea/.atr)
+      accept: ".dat,.hea,.atr"
+      multiple: true
+      binary: true
+      dir: farm/data/mitdb
+      case_key: record
+      key_from: basename      # the case value is the shared record name, not a path
+      keep_names: true        # WFDB needs the files kept as <name>.dat/.hea/.atr
+      params:
+        - { name: seconds, label: "seconds (0 = all)", default: 0 }
+    # "Generate tests" synthesizes N ECGs with QRS spikes at known positions and
+    # writes them as WFDB records whose .atr IS the ground truth — synthetic data
+    # with perfect labels, scored by the same detector.
+    generate:
+      label: synthetic ECGs
+      script: farm/experiments/generators/ecg_gen.py
+      default: 3
+    # Or run any record already in farm/data/mitdb by number.
+    custom_case:
+      label: recording
+      params:
+        - { name: record, label: "MIT-BIH record", default: "103" }
+        - { name: seconds, label: "seconds", default: 60 }
+    cases:
+      - name: record 100
+        record: "100"
+        seconds: 60
+      - name: record 101
+        record: "101"
+        seconds: 60
+
+  - type: physics
+    label: SPICE circuit
+    dut: ngspice transient analysis
+    golden: closed-form RC step response
+    inputs: circuit netlists
+    metric: linf_error
+    ui: campaign
+    requirements: farm/requirements/physics.txt
+    system: [ngspice]
+    # The website can run your own RC values (the closed-form golden covers the RC
+    # low-pass family).
+    custom_case:
+      label: RC circuit
+      params:
+        - { name: r, label: "R (ohms)", default: 1000 }
+        - { name: c, label: "C (farads)", default: 1.0e-6 }
+    # "Generate tests" picks N random R/C values across the low-pass family; the
+    # closed-form golden covers all of them.
+    generate:
+      label: random RC circuits
+      script: farm/experiments/generators/physics_gen.py
+      default: 5
+    cases:
+      - name: rc_1k_1u
+        r: 1000
+        c: 1.0e-6
+      - name: rc_10k_1u
+        r: 10000
+        c: 1.0e-6

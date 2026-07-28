@@ -1,0 +1,6 @@
+# Compiler-diff experiment — same C program at -O0 vs -O2, outputs must agree.
+# No pip packages required.
+#
+# Needs a C compiler on PATH (clang or gcc):
+#   macOS:  Xcode command line tools (clang ships with them)
+#   Debian: sudo apt install clang

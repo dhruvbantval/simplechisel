@@ -1,0 +1,85 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+}
+
+.chartWrap {
+  position: relative;
+  margin-bottom: var(--space-5);
+}
+
+.chart {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+/* recessive grid + axes */
+.grid {
+  stroke: var(--hairline);
+  stroke-width: 1;
+}
+
+.axisText {
+  fill: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* the single series line — accent, 2px, per mark specs */
+.line {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.marker {
+  fill: var(--bg);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.marker.ok {
+  fill: var(--success);
+  stroke: var(--success);
+}
+.marker.bad {
+  fill: var(--danger);
+  stroke: var(--danger);
+}
+
+.lastLabel {
+  fill: var(--text-strong);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* hover tooltip */
+.tip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 12px));
+  background: var(--bg-raised);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text);
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  z-index: 5;
+}
+
+.tipSha {
+  font-family: var(--font-mono);
+  color: var(--text-strong);
+  margin-bottom: 2px;
+}
+
+.tipMuted {
+  color: var(--text-muted);
+  margin-top: 2px;
+}
