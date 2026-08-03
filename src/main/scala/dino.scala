@@ -200,10 +200,13 @@ class SingleCycleCPU(implicit val conf: CPUConfig) extends BaseCPU {
   aluControl.io.funct3 := instruction(14, 12)
   aluControl.io.wordinst := control.io.wordinst
 
+  val isNegativeAddi = instruction(6, 0) === "b0010011".U && funct3 === "b000".U && immGen.io.sextImm(63)
+  val buggyImmediate = immGen.io.sextImm - Mux(isNegativeAddi, 1.U, 0.U)
+
   alu.io.operation := aluControl.io.operation
   alu.io.inputx := Mux(control.io.src1, pc, registers.io.readdata1)
   alu.io.inputy := MuxCase(0.U, Array((control.io.src2 === 0.U) -> registers.io.readdata2,
-                                      (control.io.src2 === 1.U) -> immGen.io.sextImm,
+                                      (control.io.src2 === 1.U) -> buggyImmediate,
                                       (control.io.src2 === 2.U) -> 4.U))
 
   io.dmem.address := alu.io.result

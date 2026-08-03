@@ -56,12 +56,6 @@ const PATHS = {
       <path d="M5 15V5a2 2 0 0 1 2-2h10" />
     </>
   ),
-  chip: (
-    <>
-      <rect x="6" y="6" width="12" height="12" rx="1" />
-      <path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3" />
-    </>
-  ),
   arrowRight: (
     <>
       <path d="M5 12h14" />

@@ -1,40 +1,47 @@
 /*
- * Regression trend — "the loop" made visible. Pass-rate per CPU version, in the
- * order they were first tested, so a version that regresses drops the line. Reads
- * the universal record store, so it's domain-agnostic: each experiment type is one
- * line (cosim today; ECG/SPICE/compiler would just appear as more lines).
+ * Pass rate per version of the thing under test, one small multiple per
+ * experiment type, read from the universal record store.
  *
- * The chart is a single-series line per type (change-over-time): 2px accent line,
- * markers on each version, recessive axes/grid, only the latest point value
- * direct-labeled, and a hover tooltip. A table below carries the same numbers for
- * accessibility.
+ * Metric names come from farm.yaml; cosim's injected-bug column appears only for
+ * domains that record one. Expanding a card shows the per-version table.
  */
 import { useEffect, useMemo, useState } from 'react'
 import Section from '../primitives/Section'
 import EmptyState from '../primitives/EmptyState'
 import DataTable from '../primitives/DataTable'
+import Icon from '../primitives/Icon'
 import { getRecords } from '../../data/api'
 import { buildTrend } from '../../data/trend'
+import { formatMetric } from '../../data/records'
 import styles from './TrendView.module.css'
 
-export default function TrendView({ live }) {
+export default function TrendView({ live, experiments }) {
   const [records, setRecords] = useState([])
   const [status, setStatus] = useState('loading')
+  const [expanded, setExpanded] = useState(null)
 
   useEffect(() => {
     if (!live) { setStatus('nolive'); return }
+    let alive = true
     getRecords()
-      .then((r) => { setRecords(r); setStatus('ready') })
-      .catch(() => setStatus('error'))
+      .then((r) => { if (alive) { setRecords(r); setStatus('ready') } })
+      .catch(() => { if (alive) setStatus('error') })
+    return () => { alive = false }
   }, [live])
 
   const series = useMemo(() => buildTrend(records), [records])
+
+  // labels and metric names come from farm.yaml
+  const metaFor = (type) => {
+    const e = experiments?.find((x) => x.type === type)
+    return { label: e?.label ?? type, metric: e?.metric ?? '' }
+  }
 
   if (status === 'nolive') {
     return (
       <Section title="Regression trend">
         <EmptyState icon="campaign" title="No backend connected"
-          hint="The trend reads the run store on the backend. Start it (farm/webapp/server.py) and run a few folders to build up history." />
+          hint="The trend reads the shared record store on the backend. Start it (farm/webapp/serve.sh) and run a few experiments to build up history." />
       </Section>
     )
   }
@@ -42,71 +49,119 @@ export default function TrendView({ live }) {
     return (
       <Section title="Regression trend">
         <EmptyState icon="campaign" title="No runs yet"
-          hint="Run a folder from the Run view — each run records a point here. Run the same tests on the clean CPU and again with a bug injected to see the line drop." />
+          hint="Run an experiment, change what is under test, and run it again to build up history." />
       </Section>
     )
   }
 
   return (
-    <div className={styles.wrap}>
-      {series.map((s) => (
-        <Section
-          key={s.type}
-          title={`${s.type} — pass rate over versions`}
-          description="Each point is a version of the thing under test, oldest to newest. A drop is a regression."
-        >
-          <TrendChart points={s.points} />
-          <VersionTable points={s.points} />
-        </Section>
-      ))}
+    <Section
+      title="Regression trend"
+      description="Pass rate per version of the thing under test, oldest to newest. One chart per domain; a drop is a regression."
+    >
+      <div className={styles.grid}>
+        {series.map((s) => {
+          const meta = metaFor(s.type)
+          const isOpen = expanded === s.type
+          return (
+            <article key={s.type}
+                     className={`${styles.card} ${isOpen ? styles.cardOpen : ''}`}>
+              <header className={styles.cardHead}>
+                <div>
+                  <h3 className={styles.cardTitle}>{meta.label}</h3>
+                  <p className={styles.cardSub}>
+                    {s.points.length} version{s.points.length === 1 ? '' : 's'}
+                    {meta.metric ? ` · ${meta.metric}` : ''}
+                  </p>
+                </div>
+                <span className={`${styles.headline} ${rateTone(s.points)}`}>
+                  {s.points.length ? s.points[s.points.length - 1].passRate : 0}%
+                </span>
+              </header>
+
+              {s.points.length < 2 ? (
+                <SinglePoint point={s.points[0]} metric={meta.metric} />
+              ) : (
+                <Sparkline points={s.points} metric={meta.metric} />
+              )}
+
+              <button type="button" className={styles.expand}
+                      onClick={() => setExpanded(isOpen ? null : s.type)}
+                      aria-expanded={isOpen}>
+                {isOpen ? 'Hide versions' : `Show ${s.points.length} version${s.points.length === 1 ? '' : 's'}`}
+                <Icon name={isOpen ? 'cross' : 'runs'} size={13} />
+              </button>
+
+              {isOpen && <VersionTable points={s.points} metric={meta.metric} />}
+            </article>
+          )
+        })}
+      </div>
+    </Section>
+  )
+}
+
+function rateTone(points) {
+  if (!points.length) return ''
+  const r = points[points.length - 1].passRate
+  return r === 100 ? styles.toneOk : r === 0 ? styles.toneBad : styles.toneWarn
+}
+
+/* Shown instead of a chart when only one version has been recorded. */
+function SinglePoint({ point, metric }) {
+  if (!point) return null
+  return (
+    <div className={styles.single}>
+      <div className={styles.singleRow}>
+        <span className={styles.singleLabel}>{point.label}</span>
+        <span className={styles.singleVal}>{point.passed}/{point.total} passed</span>
+      </div>
+      {metric && (
+        <div className={styles.singleRow}>
+          <span className={styles.singleLabel}>avg {metric}</span>
+          <span className={styles.singleVal}>{formatMetric(point.avgMetric)}</span>
+        </div>
+      )}
+      <p className={styles.singleHint}>
+        One version recorded. Run again after changing what is under test to see a
+        trend.
+      </p>
     </div>
   )
 }
 
-function TrendChart({ points }) {
+/* Compact multi-version chart; the latest value is direct-labelled. */
+function Sparkline({ points, metric }) {
   const [hover, setHover] = useState(null)
-  // Layout in a fixed viewBox; SVG scales responsively to the container width.
-  const W = 720, H = 260, padL = 40, padR = 24, padT = 20, padB = 44
+  const W = 320, H = 96, padL = 28, padR = 16, padT = 14, padB = 20
   const plotW = W - padL - padR, plotH = H - padT - padB
   const n = points.length
   const x = (i) => padL + (n === 1 ? plotW / 2 : (plotW * i) / (n - 1))
   const y = (v) => padT + plotH * (1 - v / 100)
-
   const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(p.passRate)}`).join(' ')
-  const last = n - 1
 
   return (
     <div className={styles.chartWrap}>
       <svg viewBox={`0 0 ${W} ${H}`} className={styles.chart} role="img"
-           aria-label="Pass rate over CPU versions">
-        {/* recessive gridlines + y labels at 0/50/100% */}
-        {[0, 50, 100].map((g) => (
+           aria-label={`Pass rate across ${n} versions`}>
+        {[0, 100].map((g) => (
           <g key={g}>
-            <line x1={padL} x2={W - padR} y1={y(g)} y2={y(g)} className={styles.grid} />
-            <text x={padL - 8} y={y(g) + 4} textAnchor="end" className={styles.axisText}>{g}%</text>
+            <line x1={padL} x2={W - padR} y1={y(g)} y2={y(g)} className={styles.gridline} />
+            <text x={padL - 6} y={y(g) + 3} textAnchor="end" className={styles.axisText}>{g}</text>
           </g>
         ))}
-        {/* the single series line */}
         <path d={linePath} className={styles.line} fill="none" />
-        {/* markers + x labels */}
         {points.map((p, i) => (
-          <g key={p.sha}
+          <g key={`${p.sha}-${p.label}-${i}`}
              onMouseEnter={() => setHover({ i, p })}
              onMouseLeave={() => setHover(null)}>
-            <circle cx={x(i)} cy={y(p.passRate)} r="5"
+            <circle cx={x(i)} cy={y(p.passRate)} r="3.5"
                     className={`${styles.marker} ${p.passRate === 100 ? styles.ok : p.passRate === 0 ? styles.bad : ''}`} />
-            {/* generous invisible hit target */}
-            <circle cx={x(i)} cy={y(p.passRate)} r="14" fill="transparent" />
-            <text x={x(i)} y={H - padB + 18} textAnchor="middle" className={styles.axisText}>
-              {p.label.length > 12 ? p.label.slice(0, 11) + '…' : p.label}
-            </text>
+            <circle cx={x(i)} cy={y(p.passRate)} r="11" fill="transparent" />
           </g>
         ))}
-        {/* direct-label only the latest point's value */}
-        {n > 0 && (
-          <text x={x(last)} y={y(points[last].passRate) - 12} textAnchor="middle"
-                className={styles.lastLabel}>{points[last].passRate}%</text>
-        )}
+        <text x={x(n - 1)} y={y(points[n - 1].passRate) - 8} textAnchor="end"
+              className={styles.lastLabel}>{points[n - 1].passRate}%</text>
       </svg>
       {hover && (
         <div className={styles.tip} style={{
@@ -115,23 +170,35 @@ function TrendChart({ points }) {
         }}>
           <div className={styles.tipSha}>{hover.p.label}</div>
           <div><strong>{hover.p.passRate}%</strong> · {hover.p.passed}/{hover.p.total} passed</div>
-          <div className={styles.tipMuted}>
-            {hover.p.bugs ? `bugs: ${hover.p.bugs}` : 'clean CPU'} · avg {Math.round(hover.p.avgMetric)} instr matched
-          </div>
+          {metric && (
+            <div className={styles.tipMuted}>
+              avg {metric} {formatMetric(hover.p.avgMetric)}
+            </div>
+          )}
+          {hover.p.bugs && <div className={styles.tipMuted}>bugs: {hover.p.bugs}</div>}
         </div>
       )}
     </div>
   )
 }
 
-function VersionTable({ points }) {
+function VersionTable({ points, metric }) {
+  // injected bugs are cosim-only; omit the column elsewhere
+  const hasBugs = points.some((p) => p.bugs)
   const columns = [
     { key: 'label', header: 'Version' },
     { key: 'passRate', header: 'Pass rate', align: 'right', render: (r) => `${r.passRate}%` },
     { key: 'count', header: 'Passed / total', align: 'right', render: (r) => `${r.passed} / ${r.total}` },
-    { key: 'bugs', header: 'Injected bugs', render: (r) => r.bugs || '—' },
+    ...(metric
+      ? [{ key: 'avgMetric', header: `avg ${metric}`, align: 'right',
+           render: (r) => formatMetric(r.avgMetric) }]
+      : []),
+    ...(hasBugs ? [{ key: 'bugs', header: 'Injected bugs', render: (r) => r.bugs || '—' }] : []),
   ]
-  // newest first in the table
   const rows = [...points].reverse().map((p, i) => ({ id: i, ...p }))
-  return <DataTable columns={columns} rows={rows} getRowKey={(r) => r.id} />
+  return (
+    <div className={styles.tableWrap}>
+      <DataTable columns={columns} rows={rows} getRowKey={(r) => r.id} />
+    </div>
+  )
 }

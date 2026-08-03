@@ -23,6 +23,7 @@ from pathlib import Path
 
 from ..adapter import Adapter
 from ..record import Metric
+from ._common import bash_bin, sh_path
 
 _HELPER = Path(__file__).parent / "compiler_diff.sh"
 _SECTION = re.compile(
@@ -34,13 +35,21 @@ class CompilerDiffAdapter(Adapter):
 
     def build_command(self, config: dict) -> list:
         """Run the same C program through -O0 and -O2 and print both outputs."""
-        return ["bash", str(_HELPER), config["program"]]
+        return [bash_bin(), sh_path(_HELPER), sh_path(config["program"])]
 
     def parse_result(self, exit_code, stdout, artifacts_dir, config):
         program = config["program"]
         source_sha = config.get("source_sha", "")
         name = Path(program).name
         inputs = self._program_fingerprint(program)
+
+        if "MISSING_INPUT" in stdout:
+            return self.record(
+                status="error", metric=Metric("outputs_agree", 0),
+                reason_code="missing_input",
+                detail=f"{name}: input file no longer exists",
+                config={"program": name, "cc": config.get("cc", "clang")},
+                source_sha=source_sha, inputs=inputs)
 
         if "COMPILE_FAIL" in stdout:
             first = (stdout.strip().splitlines() or ["compile failed"])[0]
@@ -59,6 +68,21 @@ class CompilerDiffAdapter(Adapter):
                 source_sha=source_sha, inputs=inputs)
 
         rc0, out0, rc2, out2 = m.group(1), m.group(2), m.group(3), m.group(4)
+
+        # 126/127 mean the binary could not be executed at all, which is an
+        # environment failure rather than a divergence between the two builds
+        exec_failed = [lvl for lvl, rc in (("-O0", rc0), ("-O2", rc2))
+                       if int(rc) in (126, 127)]
+        if exec_failed:
+            return self.record(
+                status="error", metric=Metric("outputs_agree", 0),
+                reason_code="exec_failed",
+                detail=(f"{name}: {', '.join(exec_failed)} binary would not run "
+                        f"(exit {rc0}/{rc2}) — not a divergence"),
+                metrics={"exit_o0": int(rc0), "exit_o2": int(rc2)},
+                config={"program": name, "cc": config.get("cc", "clang")},
+                source_sha=source_sha, inputs=inputs)
+
         agree = (out0 == out2) and (rc0 == rc2)
         return self.record(
             status="pass" if agree else "fail",

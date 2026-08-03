@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Run one experiment's campaign, driven entirely by farm.yaml.
+r"""Run one experiment's campaign, driven entirely by farm.yaml.
 
-    farm/.venv/bin/python farm/run_experiment.py control
-    farm/.venv/bin/python farm/run_experiment.py --list
+    farm/.venv/bin/python farm/run_experiment.py control     # macOS / Linux
+    farm\.venv\Scripts\python farm/run_experiment.py --list    # Windows
 
 It looks the experiment up in farm.yaml, picks the matching adapter, expands the
 case list, runs each case through the adapter, and writes the results into the
@@ -22,6 +22,12 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))  # so `import farm` works from anywhere
 
+# Force UTF-8 output; a Windows console defaults to cp1252 and would mangle or
+# raise on the non-ASCII characters used below.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 from farm.adapters import ADAPTERS          # noqa: E402
 from farm.config import cases_for, experiment, experiments, load_config  # noqa: E402
 from farm.runner import run_experiments     # noqa: E402
@@ -35,18 +41,34 @@ def version_of(exp: dict) -> str:
     something to key on. Domains that name a tool report that tool's version."""
     tool = (exp.get("system") or [None])[0]
     if tool:
-        try:
-            import re
-            out = subprocess.run([tool, "--version"], capture_output=True, text=True)
-            text = out.stdout or out.stderr
-            # scan all lines: tools print the version on line 1 (clang) or later
+        import os
+        import re
+        import shutil
+        # Prefer the "_con" console twin on Windows: the plain executable can be a
+        # windowed build that opens a GUI and writes nothing to a pipe (ngspice).
+        candidates = [tool]
+        if os.name == "nt" and shutil.which(f"{tool}_con"):
+            candidates.insert(0, f"{tool}_con")
+
+        text = ""
+        for exe in candidates:
+            try:
+                out = subprocess.run([exe, "--version"], capture_output=True, text=True,
+                                     encoding="utf-8", errors="replace", timeout=30)
+            except (OSError, subprocess.SubprocessError):
+                continue
+            text = out.stdout or out.stderr or ""
+            if text.strip():
+                break
+
+        if text.strip():
+            # tools print the version on line 1 (clang) or later
             # (ngspice: "** ngspice-46 : ...")
             m = re.search(rf"{re.escape(tool)}[- ]v?(\d+(?:\.\d+)*)", text, re.I) \
                 or re.search(r"version (\d+(?:\.\d+)*)", text, re.I) \
                 or re.search(r"(\d+\.\d+(?:\.\d+)*)", text)
             return f"{tool}-{m.group(1)}" if m else f"{tool}-unknown"
-        except OSError:
-            pass
+        return f"{tool}-unknown"
     # otherwise the repo commit (the code under test is ours)
     try:
         out = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
@@ -63,6 +85,10 @@ def main() -> int:
     ap.add_argument("--list", action="store_true", help="list configured experiments")
     ap.add_argument("--all", action="store_true",
                     help="run every experiment that has cases (skips UI-driven ones like cosim)")
+    ap.add_argument("--batch", default=None,
+                    help="run only this saved generated batch (default: every case)")
+    ap.add_argument("--json-summary", default=None,
+                    help="write {passed,total,errored} for this run to a file")
     args = ap.parse_args()
 
     config = load_config()
@@ -96,13 +122,16 @@ def main() -> int:
         if not exp or not adapter:
             print(f"[{t}] no experiment/adapter — skipping", file=sys.stderr)
             continue
-        cases = cases_for(exp)
+        cases = cases_for(exp, batch=args.batch if len(targets) == 1 else None)
         if not cases:
-            print(f"[{t}] no cases (UI-driven, like cosim) — skipping", file=sys.stderr)
+            where = f"batch '{args.batch}'" if args.batch else "cases (UI-driven, like cosim)"
+            print(f"[{t}] no {where} — skipping", file=sys.stderr)
             continue
 
         source_sha = version_of(exp)
-        print(f"[{t}] {len(cases)} case(s) — {exp.get('dut')} vs {exp.get('golden')}  @ {source_sha}")
+        scope = f" batch '{args.batch}'" if args.batch else ""
+        print(f"[{t}]{scope} {len(cases)} case(s) — {exp.get('dut')} vs {exp.get('golden')}"
+              f"  @ {source_sha}")
         records = run_experiments(adapter, cases, STORE, source_sha=source_sha,
                                   on_log=lambda line: print("  " + line))
         passed = sum(1 for r in records if r.status == "pass")
@@ -118,6 +147,21 @@ def main() -> int:
         tp = sum(p for _, p, _, _ in overall)
         tn = sum(n for _, _, n, _ in overall)
         print(f"  {'TOTAL':<14} {tp}/{tn} passed across {len(overall)} domain(s)")
+
+    # machine-readable result for the caller; the store holds every record ever
+    # written for this type, not just this run's
+    if args.json_summary:
+        import json
+        summary = {
+            "passed": sum(p for _, p, _, _ in overall),
+            "total": sum(n for _, _, n, _ in overall),
+            "errored": sum(e for _, _, _, e in overall),
+            "batch": args.batch,
+            "domains": [{"type": t, "passed": p, "total": n, "errored": e}
+                        for t, p, n, e in overall],
+        }
+        Path(args.json_summary).write_text(json.dumps(summary), encoding="utf-8")
+
     print("records stored -> see the Trend view for a line per domain")
     return 0
 

@@ -1,0 +1,27 @@
+# Files executed by POSIX tools must keep LF endings. With core.autocrlf=true
+# (git's default on Windows) a CRLF checkout breaks them under WSL, Docker and
+# CI: the trailing \r becomes part of the token, so `set -euo pipefail` fails
+# with "set: pipefail: invalid option name".
+*.sh      text eol=lf
+*.bash    text eol=lf
+*.yaml    text eol=lf
+*.yml     text eol=lf
+Makefile  text eol=lf
+
+# Patches must match the endings of what they patch; upstream riscv-dv is LF.
+*.patch   text eol=lf
+*.diff    text eol=lf
+
+# Bare-metal assembly for the RISC-V toolchain.
+*.S       text eol=lf
+*.s       text eol=lf
+
+* text=auto
+
+# WFDB signal/annotation data and other binary payloads.
+*.dat binary
+*.atr binary
+*.hea binary
+*.vcd binary
+*.png binary
+*.svg text

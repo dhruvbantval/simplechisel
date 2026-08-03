@@ -9,45 +9,49 @@ import Tooltip from '../primitives/Tooltip'
 import UploadControl from '../dashboard/UploadControl'
 import styles from './Sidebar.module.css'
 
+/* Shared views first, then the two cosim-specific ones under a CPU heading. */
 const NAV = [
-  { id: 'overview', label: 'Overview', icon: 'overview', hint: 'KPIs and tests for the active run' },
-  { id: 'tests', label: 'Tests', icon: 'folder', hint: 'Generate and browse saved test folders' },
-  { id: 'run', label: 'Run', icon: 'play', hint: 'Run a folder against the CPU; inject bugs' },
-  { id: 'trend', label: 'Trend', icon: 'campaign', hint: 'Pass-rate per CPU version — regressions show as drops' },
-  { id: 'runs', label: 'History', icon: 'runs', hint: 'Every past run; pick one to inspect' },
-  { id: 'campaign', label: 'Campaign', icon: 'campaign', hint: 'Catch-rate of injected bugs across programs' },
+  { id: 'overview', label: 'Overview', icon: 'overview', hint: 'Every domain’s results, from the shared record store' },
+  { id: 'tests', label: 'Tests', icon: 'folder', hint: 'Generate and browse test batches for any experiment' },
+  { id: 'run', label: 'Experiments', icon: 'play', hint: 'Run any experiment: CPU, compiler, PID, ECG, SPICE' },
+  { id: 'trend', label: 'Trend', icon: 'campaign', hint: 'Pass-rate per version, per domain — regressions show as drops' },
+  { id: 'runs', label: 'CPU runs', icon: 'runs', hint: 'Past cosim runs; pick one for the per-instruction diff', group: 'CPU' },
+  { id: 'campaign', label: 'CPU mutations', icon: 'bug', hint: 'Catch-rate of injected CPU bugs across programs', group: 'CPU' },
 ]
 
-export default function Sidebar({ view, onNavigate, onUpload, summary, open, onClose }) {
+export default function Sidebar({ view, onNavigate, onUpload, farm, open, onClose }) {
   return (
     <>
       <div className={`${styles.scrim} ${open ? styles.scrimOpen : ''}`} onClick={onClose} aria-hidden="true" />
       <aside className={`${styles.sidebar} ${open ? styles.open : ''}`}>
         <div className={styles.brand}>
-          <span className={styles.brandMark} aria-hidden="true">
-            <Icon name="chip" size={18} />
-          </span>
+          <img className={styles.brandMark} src="/logo.png" alt="" width="28" height="28" />
           <span className={styles.brandText}>
-            Experiment<span className={styles.brandThin}>Farm</span>
+            AutoExperiment<span className={styles.brandThin}>Farm</span>
           </span>
         </div>
 
         <nav className={styles.nav}>
-          {NAV.map((item) => (
-            <Tooltip key={item.id} label={item.hint} side="right">
-              <button
-                type="button"
-                className={`${styles.navItem} ${view === item.id ? styles.active : ''}`}
-                onClick={() => {
-                  onNavigate(item.id)
-                  onClose?.()
-                }}
-                aria-current={view === item.id ? 'page' : undefined}
-              >
-                <Icon name={item.icon} size={17} />
-                {item.label}
-              </button>
-            </Tooltip>
+          {NAV.map((item, i) => (
+            <div key={item.id} className={styles.navSlot}>
+              {item.group && NAV[i - 1]?.group !== item.group && (
+                <span className={styles.navGroup}>{item.group}</span>
+              )}
+              <Tooltip label={item.hint} side="right">
+                <button
+                  type="button"
+                  className={`${styles.navItem} ${view === item.id ? styles.active : ''}`}
+                  onClick={() => {
+                    onNavigate(item.id)
+                    onClose?.()
+                  }}
+                  aria-current={view === item.id ? 'page' : undefined}
+                >
+                  <Icon name={item.icon} size={17} />
+                  {item.label}
+                </button>
+              </Tooltip>
+            </div>
           ))}
         </nav>
 
@@ -55,14 +59,26 @@ export default function Sidebar({ view, onNavigate, onUpload, summary, open, onC
           <UploadControl onUpload={onUpload} label="Upload run" />
         </div>
 
+        {/* Farm-wide totals from the shared record store. */}
         <div className={styles.summary}>
-          <SummaryRow label="Runs" value={summary.totalRuns} />
-          <SummaryRow label="Mutations" value={summary.mutationRuns} hint="Runs with an injected bug" />
+          <SummaryRow label="Records" value={farm.total} hint="One per experiment case run, all domains" />
           <SummaryRow
-            label="Bugs caught"
-            value={summary.bugsCaught}
-            tone={summary.bugsCaught > 0 ? 'success' : 'muted'}
-            hint="Mutation runs where at least one program failed"
+            label="Pass rate"
+            value={farm.total ? `${farm.passRate}%` : '—'}
+            tone={farm.total === 0 ? 'muted' : farm.passRate >= 80 ? 'success' : 'muted'}
+            hint="Across every experiment"
+          />
+          <SummaryRow
+            label="Failed"
+            value={farm.failed}
+            tone={farm.failed > 0 ? 'danger' : 'muted'}
+            hint="Disagreed with the golden reference"
+          />
+          <SummaryRow
+            label="Errored"
+            value={farm.errored}
+            tone={farm.errored > 0 ? 'warning' : 'muted'}
+            hint="Could not run — usually a missing tool"
           />
         </div>
       </aside>

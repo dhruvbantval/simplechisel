@@ -38,7 +38,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 ROOT = Path(__file__).resolve().parents[2]
 FARM = ROOT / "farm"                                # the domain-agnostic farm
@@ -51,8 +51,10 @@ TESTS_DIR = COSIM / "build" / "webapp" / "tests"   # the persistent test library
 CPU_DIR = COSIM / "build" / "webapp" / "cpu"        # uploaded custom CPUs
 BUILTIN_SV = ROOT / "build_singlecyclecpu_nd"       # DINO's generated Verilog
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-FARM_VENV = FARM / ".venv" / "bin" / "python"       # experiment deps live here
-PY = str(FARM_VENV) if FARM_VENV.exists() else sys.executable
+# experiment deps live here; posix venvs use bin/, Windows venvs Scripts/
+FARM_VENV = next((p for p in (FARM / ".venv" / "bin" / "python",
+                              FARM / ".venv" / "Scripts" / "python.exe") if p.exists()), None)
+PY = str(FARM_VENV) if FARM_VENV else sys.executable
 
 HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "8000"))
@@ -72,8 +74,14 @@ COMPILER_CORPUS = FARM / "adapters" / "corpus" / "compiler"
 # that file plus an adapter, with no change here.
 def load_experiments() -> list:
     try:
-        from farm.config import experiments as _experiments, load_config
-        return _experiments(load_config())
+        from farm.config import experiments as _experiments, load_config, venv_python
+        exps = _experiments(load_config())
+        # `setup:` is shown to the user as a command to run, so spell the
+        # interpreter for this platform rather than hardcoding a posix path.
+        for e in exps:
+            if isinstance(e.get("setup"), str):
+                e["setup"] = e["setup"].replace("{python}", venv_python())
+        return exps
     except Exception as exc:  # noqa: BLE001 - degrade gracefully if PyYAML is absent
         print(f"[webapp] could not read farm.yaml ({exc}); falling back to cosim only")
         return [{"type": "cosim", "label": "CPU cosim", "dut": "DINO CPU",
@@ -89,17 +97,215 @@ def child_env() -> dict:
             seen.add(p)
             ordered.append(p)
     env["PATH"] = os.pathsep.join(ordered)
+    # children must write UTF-8 too; a piped python otherwise uses the locale codec
+    env["PYTHONIOENCODING"] = "utf-8"
     return env
 
 
 def have(tool: str) -> bool:
-    return any((Path(d) / tool).exists() for d in child_env()["PATH"].split(os.pathsep))
+    exts = ["", ".exe", ".bat", ".cmd"] if os.name == "nt" else [""]
+    return any((Path(d) / f"{tool}{e}").exists()
+               for d in child_env()["PATH"].split(os.pathsep) for e in exts)
+
+
+def sh(p) -> str:
+    """A path in the form bash understands.
+
+    Windows backslashes are eaten as escapes by bash; forward slashes with a
+    drive letter work. No-op on posix.
+    """
+    return Path(p).as_posix()
+
+
+def bash_exe() -> str:
+    """Path to an MSYS/Git bash that can see this repo.
+
+    On Windows, CreateProcess searches System32 before PATH, so a bare "bash"
+    resolves to the WSL launcher, which cannot open 'C:/repo/x.sh'. Resolve a
+    real MSYS bash by path instead. FARM_BASH overrides.
+    """
+    override = os.environ.get("FARM_BASH")
+    if override and Path(override).exists():
+        return override
+    if os.name != "nt":
+        return "bash"
+
+    system32 = (Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32").resolve()
+    candidates = []
+    found = shutil.which("bash")
+    if found:
+        candidates.append(Path(found))
+    for base in (os.environ.get("ProgramFiles", r"C:\Program Files"),
+                 os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+                 os.environ.get("LOCALAPPDATA", "")):
+        if base:
+            candidates += [Path(base) / "Git" / "bin" / "bash.exe",
+                           Path(base) / "Git" / "usr" / "bin" / "bash.exe"]
+    for c in candidates:
+        try:
+            if c.exists() and c.resolve().parent != system32:
+                return str(c)
+        except OSError:
+            continue
+    return "bash"
+
+
+BASH = bash_exe()
+
+
+def to_wsl_path(p) -> str:
+    """C:\\a\\b -> /mnt/c/a/b, the same file as seen from inside WSL."""
+    p = Path(p).resolve()
+    drive = p.drive.rstrip(":").lower()
+    rest = p.as_posix()[len(p.drive):].lstrip("/")
+    return f"/mnt/{drive}/{rest}" if drive else p.as_posix()
+
+
+def wsl_available() -> bool:
+    """True if WSL is installed with a usable default distro. Cached."""
+    global _WSL_OK
+    if _WSL_OK is None:
+        _WSL_OK = False
+        if os.name == "nt":
+            try:
+                out = subprocess.run(["wsl", "-e", "bash", "-lc", "echo ok"],
+                                     capture_output=True, timeout=25)
+                # wsl.exe emits UTF-16 for its own messages; the payload is ascii
+                text = out.stdout.decode("utf-8", "ignore").replace("\x00", "")
+                _WSL_OK = out.returncode == 0 and "ok" in text
+            except (OSError, subprocess.SubprocessError):
+                _WSL_OK = False
+    return _WSL_OK
+
+
+_WSL_OK = None
+
+
+def wsl_command(cwd: Path, script: Path, env_vars: dict, args=()) -> list:
+    """Run a repo script inside WSL with the given environment.
+
+    The whole cosim toolchain is Linux-only (riscv-dv's pyvsc dependency has no
+    Windows wheel; verilator, spike and the RISC-V gcc have no Windows builds),
+    so on Windows it runs under WSL against this same checkout over /mnt/c. The
+    riscv-dv venv lives in WSL's own filesystem: it holds Linux binaries, and
+    DrvFs is slow for many small files.
+    """
+    assign = " ".join(f"{k}='{v}'" for k, v in env_vars.items())
+    argv = " ".join(f"'{a}'" for a in args)
+    inner = (f"cd '{to_wsl_path(cwd)}' && "
+             f"VENV=\"$HOME/.cache/dino-riscv-dv-venv\" {assign} "
+             f"bash '{to_wsl_path(script)}' {argv}".rstrip())
+    return ["wsl", "-e", "bash", "-lc", inner]
+
+
+# Install commands per platform. Mirrors farm/README.md and installHints.js.
+def _install_hints() -> dict:
+    if sys.platform == "darwin":
+        return {"clang": "xcode-select --install",
+                "ngspice": "brew install ngspice",
+                "verilator": "brew install verilator",
+                "spike": "brew install riscv-isa-sim",
+                "riscv64-elf-gcc": "brew install riscv64-elf-gcc riscv64-elf-binutils",
+                "sbt": "brew install sbt"}
+    if os.name == "nt":
+        return {"clang": "winget install LLVM.LLVM",
+                "ngspice": "choco install ngspice",
+                "verilator": "wsl -- sudo apt install -y verilator",
+                "spike": "bash cosim/install_spike.sh   (run inside WSL)",
+                "riscv64-elf-gcc": "wsl -- sudo apt install -y gcc-riscv64-unknown-elf",
+                "sbt": "winget install sbt.sbt"}
+    return {"clang": "sudo apt install -y clang",
+            "ngspice": "sudo apt install -y ngspice",
+            "verilator": "sudo apt install -y verilator",
+            "spike": "bash cosim/install_spike.sh",
+            "riscv64-elf-gcc": "sudo apt install -y gcc-riscv64-unknown-elf",
+            "sbt": "see scala-sbt.org/download"}
+
+
+INSTALL_HINTS = _install_hints()
+
+
+# Tools that are satisfied by any one of several executables. run_cosim.sh picks
+# whichever RISC-V gcc prefix is present, so detection has to accept both.
+TOOL_ALIASES = {
+    "riscv64-elf-gcc": ("riscv64-elf-gcc", "riscv64-unknown-elf-gcc"),
+    "riscv64-unknown-elf-gcc": ("riscv64-unknown-elf-gcc", "riscv64-elf-gcc"),
+}
+
+_WSL_TOOLS: set | None = None
+
+
+def wsl_tools() -> set:
+    """Names of the cosim toolchain executables present inside WSL. Cached."""
+    global _WSL_TOOLS
+    if _WSL_TOOLS is None:
+        _WSL_TOOLS = set()
+        if wsl_available():
+            names = ["verilator", "spike", "riscv64-unknown-elf-gcc",
+                     "riscv64-elf-gcc", "sbt", "python3"]
+            probe = "; ".join(f"command -v {n} >/dev/null 2>&1 && echo {n}" for n in names)
+            try:
+                out = subprocess.run(["wsl", "-e", "bash", "-lc", probe],
+                                     capture_output=True, timeout=60)
+                text = out.stdout.decode("utf-8", "ignore").replace("\x00", "")
+                _WSL_TOOLS = {ln.strip() for ln in text.splitlines() if ln.strip()}
+            except (OSError, subprocess.SubprocessError):
+                _WSL_TOOLS = set()
+    return _WSL_TOOLS
+
+
+def runs_in_wsl(exp_type: str) -> bool:
+    """True when an experiment executes inside WSL rather than natively.
+
+    cosim's toolchain (riscv-dv, verilator, spike, the RISC-V cross-compiler) has
+    no Windows build, so on Windows both generation and runs go through WSL.
+    """
+    return os.name == "nt" and exp_type == "cosim" and wsl_available()
+
+
+def _tool_present(tool: str, in_wsl: bool) -> bool:
+    names = TOOL_ALIASES.get(tool, (tool,))
+    if in_wsl:
+        available = wsl_tools()
+        return any(n in available for n in names)
+    return any(have(n) for n in names)
+
+
+def missing_tools(exp_type: str) -> list:
+    """Tools an experiment declares in farm.yaml (`system:`) that aren't available.
+
+    Looked up wherever the experiment will actually run: inside WSL for cosim on
+    Windows, on the host PATH otherwise.
+    """
+    in_wsl = runs_in_wsl(exp_type)
+    for e in load_experiments():
+        if e.get("type") == exp_type:
+            return [t for t in (e.get("system") or []) if not _tool_present(t, in_wsl)]
+    return []
+
+
+def experiment_tools() -> dict:
+    """Per-experiment tool availability, keyed by experiment type."""
+    out = {}
+    for e in load_experiments():
+        exp_type = e["type"]
+        tools = e.get("system") or []
+        in_wsl = runs_in_wsl(exp_type)
+        out[exp_type] = {
+            "tools": {t: _tool_present(t, in_wsl) for t in tools},
+            "missing": [t for t in tools if not _tool_present(t, in_wsl)],
+            "wsl": in_wsl,
+        }
+    return out
+
+
+FOLDER_NAME_MAX = 64      # keeps the full path well inside Windows' MAX_PATH
 
 
 def safe_folder(name: str) -> str:
-    """A filesystem-safe folder name (no traversal, no separators)."""
+    """A filesystem-safe folder name (no traversal, no separators, bounded length)."""
     keep = "".join(c if (c.isalnum() or c in "-_") else "-" for c in (name or "").strip())
-    return keep.strip("-") or f"batch-{int(time.time())}"
+    return keep.strip("-")[:FOLDER_NAME_MAX].strip("-") or f"batch-{int(time.time())}"
 
 
 # --- load the mutation catalogue + apply/restore primitives from the CLI tool ---
@@ -134,7 +340,8 @@ def cpu_source_sha() -> str:
     if cpu["active"] is None:
         try:
             out = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
-                                 cwd=str(ROOT), capture_output=True, text=True)
+                                 cwd=str(ROOT), capture_output=True, text=True,
+                                 encoding="utf-8", errors="replace")
             sha = out.stdout.strip() or "unknown"
         except OSError:
             sha = "unknown"
@@ -352,6 +559,7 @@ class Job:
     def __init__(self, job_id: str, kind: str, params: dict):
         self.id, self.kind, self.params = job_id, kind, params
         self.status = "queued"
+        self.lane = ""
         self.log: list[str] = []
         self.run: dict | None = None
         self.error: str | None = None
@@ -359,7 +567,8 @@ class Job:
 
     def append(self, line: str):
         with self._lock:
-            self.log.append(line.rstrip("\n"))
+            # strip \r as well, so CRLF output does not leave a trailing CR
+            self.log.append(line.rstrip("\r\n"))
 
     def snapshot(self, since: int = 0) -> dict:
         with self._lock:
@@ -369,9 +578,24 @@ class Job:
 
 
 JOBS: dict[str, Job] = {}
-JOB_QUEUE: "queue.Queue[Job]" = queue.Queue()
 _counter = 0
 _counter_lock = threading.Lock()
+
+# Jobs are serialized per lane and run in parallel across lanes, so a long cosim
+# run does not block the other experiments.
+#
+# Everything cosim shares one lane: generation and runs both touch the riscv-dv
+# checkout, the CPU source (bug injection) and the Verilator build, so they must
+# not overlap. Each campaign experiment gets its own lane -- they only share the
+# record store, which is one file per record.
+JOB_LANES: dict[str, "queue.Queue[Job]"] = {}
+_LANES_LOCK = threading.Lock()
+
+
+def lane_for(kind: str, params: dict) -> str:
+    if kind in ("generate", "run"):
+        return "cosim"
+    return f"campaign:{params.get('type', 'unknown')}"
 
 
 def new_job(kind: str, params: dict) -> Job:
@@ -380,16 +604,25 @@ def new_job(kind: str, params: dict) -> Job:
         _counter += 1
         job_id = f"{kind}_{int(time.time())}_{_counter}"
     job = Job(job_id, kind, params)
+    job.lane = lane_for(kind, params)
     JOBS[job_id] = job
-    JOB_QUEUE.put(job)
+
+    with _LANES_LOCK:
+        q = JOB_LANES.get(job.lane)
+        if q is None:
+            q = JOB_LANES[job.lane] = queue.Queue()
+            threading.Thread(target=worker, args=(q,), daemon=True,
+                             name=f"job-{job.lane}").start()
+    q.put(job)
     return job
 
 
 def stream(job: Job, cmd: list, env: dict, cwd: Path) -> int:
     job.append(f"$ {' '.join(str(c) for c in cmd)}")
+    # explicit encoding: text=True alone uses the locale codec (cp1252 on Windows)
     proc = subprocess.Popen(cmd, cwd=str(cwd), env=env,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            text=True, bufsize=1)
+                            text=True, encoding="utf-8", errors="replace", bufsize=1)
     for line in proc.stdout:
         job.append(line)
     proc.wait()
@@ -420,21 +653,42 @@ def run_generate(job: Job):
     existing = sorted(dest.glob("*.S"))
     next_idx = max((index_of(p) for p in existing), default=-1) + 1
 
+    reserve_folder(folder)
     tmp = Path(tempfile.mkdtemp(prefix="gen-", dir=str(TESTS_DIR)))
     try:
         env = child_env()
-        env.update(TESTS=str(tests), INSTR_CNT=str(instr), TYPE=ttype, DEST=str(tmp))
+        env.update(TESTS=str(tests), INSTR_CNT=str(instr), TYPE=ttype, DEST=sh(tmp))
         job.append(
             f"[generate] folder '{folder}': +{tests} test(s), {instr} instr, type={ttype}"
             + (f" (appending to {len(existing)} existing)" if existing else ""))
-        rc = stream(job, ["bash", str(GEN)], env, ROOT)
+
+        # riscv-dv cannot run natively on Windows (see wsl_command); the
+        # generated .S files still land in the Windows tree.
+        if os.name == "nt" and wsl_available():
+            job.append("[generate] using WSL (riscv-dv's solver has no Windows build)")
+            cmd = wsl_command(ROOT, GEN, {
+                "TESTS": str(tests), "INSTR_CNT": str(instr),
+                "TYPE": ttype, "DEST": to_wsl_path(tmp),
+            })
+        else:
+            cmd = [BASH, sh(GEN)]
+
+        rc = stream(job, cmd, env, ROOT)
         if rc != 0:
             raise RuntimeError(f"gen_tests.sh exited {rc}")
         new_files = sorted(tmp.glob("*.S"), key=index_of)
+        # exiting 0 without writing anything is still a failure
+        if not new_files:
+            raise RuntimeError(
+                "gen_tests.sh produced no programs (see the log above for why)")
+        # re-assert the destination: generation takes minutes and it may have been
+        # pruned while empty
+        dest.mkdir(parents=True, exist_ok=True)
         for i, f in enumerate(new_files):
             shutil.move(str(f), str(dest / f"{TEST}_{next_idx + i}.S"))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+        release_folder(folder)
 
     total = len(list(dest.glob("*.S")))
     job.run = {"folder": folder, "count": total, "added": len(new_files)}
@@ -449,15 +703,25 @@ def run_folder(job: Job):
     if not dest.is_dir() or not any(dest.glob("*.S")):
         raise RuntimeError(f"folder '{folder}' has no tests")
 
+    missing = missing_tools("cosim")
+    if missing:
+        raise RuntimeError(
+            f"cosim needs {', '.join(missing)} — not installed. "
+            + "; ".join(f"{t}: {INSTALL_HINTS[t]}" for t in missing if t in INSTALL_HINTS)
+            + " (see farm/README.md, then restart the backend)")
+
     label = BUGS.label()
     bug_state = BUGS.snapshot()
     cpu = CPUS.snapshot()
+    in_wsl = runs_in_wsl("cosim")
+    as_path = to_wsl_path if in_wsl else sh
+
     env = child_env()
     env.update(STEPS=str(steps), JOBS="4", RUN_ID=job.id, KEEP_GOING="1")
 
     sv_dir = CPUS.sv_dir()
     if sv_dir is not None:
-        env["CPU_SV"] = str(sv_dir)
+        env["CPU_SV"] = as_path(sv_dir)
         job.append(f"[cosim] custom CPU '{cpu['active']}'")
     if label:
         env["MUTATION_LABEL"] = label
@@ -474,7 +738,18 @@ def run_folder(job: Job):
     who = cpu["active"] or "built-in DINO"
     job.append(f"[cosim] running folder '{folder}' at {steps} steps vs Spike"
                + f" — CPU: {who}" + (f", bugs: {label}" if label else ""))
-    rc = stream(job, ["bash", str(RUN_COSIM), str(dest)], env, ROOT)
+
+    if in_wsl:
+        job.append("[cosim] using WSL (the cosim toolchain is Linux-only)")
+        passthrough = ["STEPS", "JOBS", "RUN_ID", "KEEP_GOING", "BUILD_ID",
+                       "CPU_SV", "MUTATION_LABEL", "REBUILD"]
+        cmd = wsl_command(ROOT, RUN_COSIM,
+                          {k: env[k] for k in passthrough if k in env},
+                          args=[to_wsl_path(dest)])
+    else:
+        cmd = [BASH, sh(RUN_COSIM), sh(dest)]
+
+    rc = stream(job, cmd, env, ROOT)
     if rc not in (0, 1):
         raise RuntimeError(f"run_cosim.sh exited {rc}")
     BUGS.mark_built()
@@ -498,17 +773,45 @@ def run_folder(job: Job):
 def run_campaign(job: Job):
     """Run any config-driven experiment's campaign (control, ecg, physics,
     compiler-diff...). Generic: it just invokes run_experiment.py for that type,
-    which reads farm.yaml. Records land in the shared store."""
+    which reads farm.yaml. Records land in the shared store.
+
+    `batch` restricts the run to one saved generated batch."""
     exp_type = job.params.get("type", "")
+    batch = job.params.get("batch") or None
     env = child_env()
-    job.append(f"[{exp_type}] running campaign from farm.yaml")
-    rc = stream(job, [PY, str(FARM / "run_experiment.py"), exp_type], env, ROOT)
-    if rc != 0:
-        raise RuntimeError(f"{exp_type} campaign exited {rc}")
-    recs = [r for r in FARM_STORE.all() if r.get("type") == exp_type]
-    passed = sum(1 for r in recs if r.get("status") == "pass")
-    job.run = {"type": exp_type, "passed": passed, "totalTests": len(recs)}
-    job.append(f"[done] {passed}/{len(recs)} passed")
+
+    missing = missing_tools(exp_type)
+    if missing:
+        raise RuntimeError(
+            f"{exp_type} needs {', '.join(missing)} on PATH — not installed. "
+            + "; ".join(f"{t}: {INSTALL_HINTS[t]}" for t in missing if t in INSTALL_HINTS)
+            + " (see farm/README.md, then restart the backend)")
+
+    scope = f" batch '{batch}'" if batch else ""
+    job.append(f"[{exp_type}] running campaign{scope} from farm.yaml")
+
+    summary_file = Path(tempfile.mkdtemp(prefix="summary-")) / "summary.json"
+    cmd = [PY, str(FARM / "run_experiment.py"), exp_type,
+           "--json-summary", str(summary_file)]
+    if batch:
+        cmd += ["--batch", batch]
+    try:
+        rc = stream(job, cmd, env, ROOT)
+        if rc != 0:
+            raise RuntimeError(f"{exp_type} campaign exited {rc}")
+        # the runner's own count; the store holds every record ever written
+        try:
+            s = json.loads(summary_file.read_text(encoding="utf-8"))
+            passed, total = s.get("passed", 0), s.get("total", 0)
+        except (OSError, json.JSONDecodeError):
+            recs = [r for r in FARM_STORE.all() if r.get("type") == exp_type]
+            passed = sum(1 for r in recs if r.get("status") == "pass")
+            total = len(recs)
+    finally:
+        shutil.rmtree(summary_file.parent, ignore_errors=True)
+
+    job.run = {"type": exp_type, "batch": batch, "passed": passed, "totalTests": total}
+    job.append(f"[done] {passed}/{total} passed")
 
 
 def run_uploaded(job: Job):
@@ -532,9 +835,10 @@ def run_uploaded(job: Job):
     job.append(f"[done] {r['status']}: {r['detail']}")
 
 
-def worker():
+def worker(q: "queue.Queue[Job]"):
+    """Drain one lane's queue. One thread per lane; see JOB_LANES."""
     while True:
-        job = JOB_QUEUE.get()
+        job = q.get()
         job.status = "running"
         try:
             {"generate": run_generate, "run": run_folder,
@@ -545,7 +849,7 @@ def worker():
             job.error = str(exc)
             job.append(f"[error] {exc}")
         finally:
-            JOB_QUEUE.task_done()
+            q.task_done()
 
 
 # ----------------------------------------------------------- library + runs ---
@@ -553,17 +857,82 @@ def load_campaign(run_id: str) -> dict:
     return json.loads((CAMPAIGN_DIR / f"{run_id}.json").read_text())
 
 
+# Destination folders of in-flight generations. These are empty until the
+# programs are moved in, so the empty-folder sweep must skip them.
+_RESERVED_FOLDERS: set[str] = set()
+_RESERVED_LOCK = threading.Lock()
+
+
+def reserve_folder(name: str):
+    with _RESERVED_LOCK:
+        _RESERVED_FOLDERS.add(name)
+
+
+def release_folder(name: str):
+    with _RESERVED_LOCK:
+        _RESERVED_FOLDERS.discard(name)
+
+
+def prune_empty_folders() -> list[str]:
+    """Remove test folders that hold no programs.
+
+    Skips generation temp dirs and folders reserved by a running job.
+    """
+    removed = []
+    if not TESTS_DIR.exists():
+        return removed
+    with _RESERVED_LOCK:
+        reserved = set(_RESERVED_FOLDERS)
+    for d in sorted(TESTS_DIR.iterdir()):
+        if not d.is_dir() or d.name.startswith("gen-") or d.name in reserved:
+            continue
+        if not any(d.glob("*.S")):
+            try:
+                shutil.rmtree(d)
+                removed.append(d.name)
+            except OSError:
+                continue
+    return removed
+
+
 def list_folders() -> list[dict]:
+    prune_empty_folders()
     out = []
     if TESTS_DIR.exists():
         for d in sorted(TESTS_DIR.iterdir()):
-            if not d.is_dir():
+            if not d.is_dir() or d.name.startswith("gen-"):
                 continue
             tests = sorted(d.glob("*.S"))
             out.append({"name": d.name, "count": len(tests),
                         "modified": int(d.stat().st_mtime)})
     out.sort(key=lambda f: f["modified"], reverse=True)
     return out
+
+
+def delete_folder(name: str) -> dict:
+    """Remove a whole test folder."""
+    d = TESTS_DIR / safe_folder(name)
+    if not d.is_dir():
+        return {"error": f"no folder '{name}'"}
+    shutil.rmtree(d)
+    return {"ok": True, "removed": d.name}
+
+
+def delete_test(folder: str, test: str) -> dict:
+    """Remove one program from a folder; removes the folder if it empties."""
+    d = TESTS_DIR / safe_folder(folder)
+    # basename only: never let a name walk out of the folder
+    f = d / Path(test).name
+    if not f.is_file() or f.suffix != ".S":
+        return {"error": f"no test '{test}' in '{folder}'"}
+    f.unlink()
+    remaining = len(list(d.glob("*.S")))
+    folder_removed = False
+    if remaining == 0:
+        shutil.rmtree(d, ignore_errors=True)
+        folder_removed = True
+    return {"ok": True, "removed": f.name, "remaining": remaining,
+            "folderRemoved": folder_removed}
 
 
 def folder_detail(name: str) -> dict:
@@ -651,6 +1020,8 @@ class Handler(BaseHTTPRequestHandler):
                                "tools": {t: have(t) for t in
                                          ["sbt", "verilator", "spike", "riscv64-elf-gcc",
                                           "riscv64-unknown-elf-gcc"]},
+                               # per-experiment, so each tab can say what it needs
+                               "experimentTools": experiment_tools(),
                                "mutations": len(list_mutations())})
         if path == "/api/mutations":
             return self._json(list_mutations())
@@ -668,12 +1039,23 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(load_experiments())
         if path.startswith("/api/campaign/") and path.endswith("/cases"):
             t = unquote(path[len("/api/campaign/"):-len("/cases")])
+            qs = parse_qs(urlparse(self.path).query)
+            batch = (qs.get("batch") or [None])[0]
             try:
                 from farm.config import cases_for, experiment, load_config
                 exp = experiment(t, load_config())
-                return self._json({"cases": cases_for(exp) if exp else []})
+                return self._json({"cases": cases_for(exp, batch=batch) if exp else []})
             except Exception as exc:  # noqa: BLE001
                 return self._json({"cases": [], "error": str(exc)})
+        # Saved generated batches for an experiment — the campaign-side equivalent
+        # of cosim's test folders.
+        if path.startswith("/api/campaign/") and path.endswith("/batches"):
+            t = unquote(path[len("/api/campaign/"):-len("/batches")])
+            try:
+                from farm.config import batches
+                return self._json({"type": t, "batches": batches(t)})
+            except Exception as exc:  # noqa: BLE001
+                return self._json({"batches": [], "error": str(exc)})
         if path == "/api/records":
             return self._json(FARM_STORE.all())
         if path == "/api/runs":
@@ -687,7 +1069,11 @@ class Handler(BaseHTTPRequestHandler):
             job = JOBS.get(path[len("/api/jobs/"):])
             if not job:
                 return self._json({"error": "job not found"}, 404)
-            since = int(self.path.split("since=")[-1]) if "since=" in self.path else 0
+            qs = parse_qs(urlparse(self.path).query)
+            try:
+                since = max(0, int((qs.get("since") or ["0"])[0]))
+            except ValueError:
+                since = 0
             return self._json(job.snapshot(since))
         return self._serve_static(path)
 
@@ -710,6 +1096,17 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/campaign/") and path.endswith("/generate"):
             t = unquote(path[len("/api/campaign/"):-len("/generate")])
             return self._generate(t, self._body())
+        if path.startswith("/api/campaign/") and path.endswith("/batches/delete"):
+            t = unquote(path[len("/api/campaign/"):-len("/batches/delete")])
+            return self._delete_batch(t, self._body())
+        if path == "/api/folders/delete":
+            body = self._body()
+            res = delete_folder(body.get("folder", ""))
+            return self._json(res, 200 if res.get("ok") else 404)
+        if path == "/api/tests/delete":
+            body = self._body()
+            res = delete_test(body.get("folder", ""), body.get("test", ""))
+            return self._json(res, 200 if res.get("ok") else 404)
         if path == "/api/inject":
             res = BUGS.inject(self._body().get("function", ""))
             return self._json(res, 200 if res.get("ok") else 400)
@@ -833,10 +1230,11 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"jobId": job.id})
 
     def _generate(self, exp_type, body):
-        """Run an experiment's generator to synthesize N test cases and save them,
-        so they show up in the case list and run alongside the configured cases.
-        Driven by the experiment's `generate:` block in farm.yaml."""
-        from farm.config import experiment, load_config, GENERATED_DIR
+        """Synthesize N test cases and save them as a named batch.
+
+        Driven by the experiment's `generate:` block in farm.yaml. Re-using a
+        batch name appends to it."""
+        from farm.config import batch_cases, batch_dir, experiment, load_config, safe_batch
         exp = experiment(exp_type, load_config())
         gen = (exp or {}).get("generate")
         if not gen:
@@ -848,10 +1246,12 @@ class Handler(BaseHTTPRequestHandler):
         except (TypeError, ValueError):
             count = default
         count = max(1, min(count, 50))
+        batch = safe_batch(body.get("name") or "")
 
         script = ROOT / gen["script"]
         proc = subprocess.run([PY, str(script), str(count)],
-                              capture_output=True, text=True, cwd=str(ROOT))
+                              capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", cwd=str(ROOT))
         if proc.returncode != 0:
             return self._json(
                 {"error": f"generator failed: {(proc.stderr or proc.stdout)[-500:]}"}, 500)
@@ -861,9 +1261,74 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(
                 {"error": f"generator produced no JSON: {proc.stdout[-300:]}"}, 500)
 
-        GENERATED_DIR.mkdir(parents=True, exist_ok=True)
-        (GENERATED_DIR / f"{exp_type}.json").write_text(json.dumps(cases, indent=2))
-        return self._json({"type": exp_type, "count": len(cases), "cases": cases})
+        # append to an existing batch, keeping case names unique within it
+        existing = batch_cases(exp_type, batch)
+        seen = {c.get("name") for c in existing}
+        merged = list(existing)
+        for c in cases:
+            name = c.get("name", "case")
+            if name in seen:
+                n = 2
+                while f"{name} #{n}" in seen:
+                    n += 1
+                name = f"{name} #{n}"
+                c = {**c, "name": name}
+            seen.add(name)
+            merged.append(c)
+
+        d = batch_dir(exp_type)
+        d.mkdir(parents=True, exist_ok=True)
+        (d / f"{batch}.json").write_text(json.dumps(merged, indent=2), encoding="utf-8")
+        return self._json({"type": exp_type, "batch": batch, "count": len(cases),
+                           "total": len(merged), "cases": cases})
+
+    def _delete_batch(self, exp_type, body):
+        """Remove a saved batch and any input files it owns."""
+        from farm.config import GENERATED_DIR, batch_cases, batch_dir, safe_batch
+        requested = body.get("name") or ""
+        name = safe_batch(requested)
+        targets = [batch_dir(exp_type) / f"{name}.json"]
+        if requested == "generated":
+            targets.append(GENERATED_DIR / f"{exp_type}.json")   # pre-batch flat file
+
+        # Files a generator wrote for this batch (C programs, WFDB records). Only
+        # paths under the generated tree are touched, so a case pointing at a
+        # curated corpus file or a user upload is left alone.
+        inputs = []
+        gen_root = GENERATED_DIR.resolve()
+        for case in batch_cases(exp_type, name):
+            for value in case.values():
+                if not isinstance(value, str):
+                    continue
+                p = Path(value)
+                if not p.is_absolute() or not p.is_file():
+                    continue
+                try:
+                    p.resolve().relative_to(gen_root)
+                except ValueError:
+                    continue
+                inputs.append(p)
+
+        removed = [f for f in targets if f.exists()]
+        for f in removed:
+            f.unlink()
+        for f in inputs:
+            try:
+                f.unlink()
+            except OSError:
+                pass
+        if not removed:
+            return self._json({"error": f"no batch '{name}'"}, 404)
+        return self._json({"ok": True, "type": exp_type, "removed": name,
+                           "inputsRemoved": len(inputs)})
+
+    CONTENT_TYPES = {
+        ".html": "text/html", ".js": "text/javascript", ".css": "text/css",
+        ".json": "application/json", ".svg": "image/svg+xml",
+        ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".webp": "image/webp", ".ico": "image/x-icon", ".woff2": "font/woff2",
+        ".map": "application/json", ".txt": "text/plain",
+    }
 
     def _serve_static(self, path):
         if not STATIC_DIR.exists():
@@ -871,12 +1336,20 @@ class Handler(BaseHTTPRequestHandler):
                                "hint": "the API is up at /api/*"}, 404)
         rel = path.lstrip("/") or "index.html"
         target = (STATIC_DIR / rel).resolve()
-        if not str(target).startswith(str(STATIC_DIR)) or not target.is_file():
+        inside = str(target).startswith(str(STATIC_DIR))
+
+        if not inside or not target.is_file():
+            # A request for a file (it has an extension) that isn't there is a 404.
+            # Only extensionless paths fall back to index.html for client routing;
+            # answering a missing asset with HTML and a 200 hides the mistake.
+            if Path(rel).suffix:
+                return self._json({"error": f"not found: /{rel}"}, 404)
             target = STATIC_DIR / "index.html"
+            if not target.is_file():
+                return self._json({"error": "no built dashboard"}, 404)
+
         data = target.read_bytes()
-        ctype = {".html": "text/html", ".js": "text/javascript", ".css": "text/css",
-                 ".json": "application/json", ".svg": "image/svg+xml"}.get(
-                     target.suffix, "application/octet-stream")
+        ctype = self.CONTENT_TYPES.get(target.suffix, "application/octet-stream")
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
@@ -894,7 +1367,7 @@ def main():
         print("[webapp] WARNING: the CPU source still has injected bug(s): "
               + ", ".join(b["name"] for b in leftover))
         print("[webapp]          hit Reset in the UI (or: git checkout -- src/main/scala/)")
-    threading.Thread(target=worker, daemon=True).start()
+    # Lane workers start on demand in new_job().
     print(f"[webapp] backend on http://{HOST}:{PORT}  (api at /api/*)")
     print("[webapp] tools: " + ", ".join(
         f"{t}={'ok' if have(t) else 'MISSING'}"

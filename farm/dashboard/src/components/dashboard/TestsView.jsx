@@ -1,7 +1,14 @@
 /*
- * Test dashboard. Generate a named batch of programs (saved as a folder) and
- * browse the saved library. Generation is decoupled from running: this view
- * builds the test folders; the Run view executes them against the CPU.
+ * Test dashboard — every experiment, not just the CPU.
+ *
+ * Generation is decoupled from running: this view builds the inputs, the
+ * Experiments view runs them. Both halves work the same way (name a batch,
+ * choose how many, Generate, browse the library), but the CPU's inputs are
+ * folders of RISC-V programs while a campaign experiment's are JSON case lists,
+ * so each gets its own panel:
+ *
+ *   cosim (ui: cosim)     -> riscv-dv test folders, below
+ *   anything else         -> BatchLibrary, driven by farm.yaml's `generate:`
  *
  * Requires a live backend. Without one, generation isn't possible, so the view
  * explains that instead of showing dead controls.
@@ -10,27 +17,71 @@ import { useEffect, useRef, useState } from 'react'
 import Section from '../primitives/Section'
 import EmptyState from '../primitives/EmptyState'
 import Icon from '../primitives/Icon'
-import { getFolder, getFolders, pollJob, startGenerate, uploadTests } from '../../data/api'
+import LogPane from '../primitives/LogPane'
+import ExperimentTabs from './ExperimentTabs'
+import BatchLibrary from './BatchLibrary'
+import {
+  deleteFolder, deleteTest, getFolder, getFolders, startGenerate, uploadTests,
+} from '../../data/api'
+import { useJobs } from '../../data/jobs'
 import styles from './TestsView.module.css'
 
-export default function TestsView({ live, health, onFoldersChanged }) {
+export default function TestsView({ live, health, experiments, onFoldersChanged, onNavigate }) {
+  const tabs = experiments?.length ? experiments : [{ type: 'cosim', label: 'CPU cosim' }]
+  const [active, setActive] = useState('cosim')
+  const current = tabs.find((e) => e.type === active) ?? tabs[0]
+
+  if (!live) {
+    return (
+      <Section title="Tests">
+        <EmptyState
+          icon="folder"
+          title="No backend connected"
+          hint="Generating tests runs each experiment's generator on a backend (farm/webapp/server.py). Start it, or set VITE_API_BASE to a running instance, to build test batches here."
+        />
+      </Section>
+    )
+  }
+
+  return (
+    <>
+      <ExperimentTabs tabs={tabs} active={active} onSelect={setActive} />
+      {current?.ui === 'cosim' || current?.type === 'cosim' ? (
+        <CosimTests live={live} health={health} onFoldersChanged={onFoldersChanged} />
+      ) : (
+        <div className={styles.wrap}>
+          <BatchLibrary experiment={current} onNavigate={onNavigate} />
+        </div>
+      )}
+    </>
+  )
+}
+
+/* The CPU's own test-folder generator (riscv-dv). */
+function CosimTests({ live, health, onFoldersChanged }) {
   const [name, setName] = useState('')
   const [tests, setTests] = useState(10)
   const [instrCnt, setInstrCnt] = useState(120)
   const [type, setType] = useState('mixed')
 
-  const [busy, setBusy] = useState(false)
-  const [log, setLog] = useState([])
   const [error, setError] = useState(null)
   const [folders, setFolders] = useState([])
   const [openFolder, setOpenFolder] = useState(null) // { name, tests: [] }
-  const logRef = useRef(null)
   const fileRef = useRef(null)
+
+  // Generation takes minutes, so it is tracked in the job store.
+  const { startJob, jobFor } = useJobs()
+  const job = jobFor('cosim:generate')
+  const busy = job.busy
+  const log = job.log
+
+  // A single request rather than a tracked job, so it keeps a local flag.
+  const [uploading, setUploading] = useState(false)
 
   async function onUploadPrograms(fileList) {
     const picked = [...fileList].filter((f) => f.name.endsWith('.S') || f.name.endsWith('.s'))
     if (picked.length === 0) { setError('pick one or more .S files'); return }
-    setBusy(true); setError(null)
+    setUploading(true); setError(null)
     try {
       const files = await Promise.all(picked.map(async (f) => ({ name: f.name, content: await f.text() })))
       const folderName = name.trim() || `uploaded-${Date.now()}`
@@ -40,7 +91,7 @@ export default function TestsView({ live, health, onFoldersChanged }) {
     } catch (e) {
       setError(e.message ?? String(e))
     } finally {
-      setBusy(false)
+      setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
     }
   }
@@ -54,32 +105,27 @@ export default function TestsView({ live, health, onFoldersChanged }) {
   // cleanup fn or nothing, so wrap it (otherwise React calls the Promise on
   // unmount and the view crashes to blank).
   useEffect(() => { refreshFolders() }, [live]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
-  }, [log])
 
-  async function onGenerate() {
-    setBusy(true)
-    setLog([])
+  function onGenerate() {
     setError(null)
-    try {
-      const folderName = name.trim() || `batch-${Date.now()}`
-      const { jobId } = await startGenerate({
+    const folderName = name.trim() || `batch-${Date.now()}`
+    startJob({
+      key: 'cosim:generate',
+      kind: 'generate',
+      label: `Generating “${folderName}”`,
+      view: 'tests',
+      start: () => startGenerate({
         name: folderName, tests: Number(tests), instrCnt: Number(instrCnt), type,
-      })
-      const snap = await pollJob(jobId, { onLog: (lines) => setLog((p) => [...p, ...lines]) })
-      if (snap.status === 'error') {
-        setError(snap.error || 'generation failed')
-      } else {
-        setName('')
+      }),
+      describe: (snap) => snap.run
+        ? `${folderName}: ${snap.run.count} test${snap.run.count === 1 ? '' : 's'} (+${snap.run.added})`
+        : undefined,
+      onComplete: (snap) => {
+        if (snap.status !== 'error') setName('')
         refreshFolders()
         onFoldersChanged?.()
-      }
-    } catch (err) {
-      setError(err.message ?? String(err))
-    } finally {
-      setBusy(false)
-    }
+      },
+    })
   }
 
   const toggleFolder = async (folderName) => {
@@ -88,23 +134,37 @@ export default function TestsView({ live, health, onFoldersChanged }) {
     setOpenFolder(detail)
   }
 
-  if (!live) {
-    return (
-      <Section title="Tests">
-        <EmptyState
-          icon="folder"
-          title="No backend connected"
-          hint="Generating tests runs the riscv-dv generator on a backend (farm/webapp/server.py). Start it, or set VITE_API_BASE to a running instance, to build test folders here."
-        />
-      </Section>
-    )
+  async function onDeleteFolder(folderName) {
+    setError(null)
+    try {
+      await deleteFolder(folderName)
+      if (openFolder?.name === folderName) setOpenFolder(null)
+      refreshFolders()
+      onFoldersChanged?.()
+    } catch (e) {
+      setError(e.message ?? String(e))
+    }
+  }
+
+  async function onDeleteTest(folderName, testName) {
+    setError(null)
+    try {
+      const res = await deleteTest(folderName, testName)
+      // the backend drops a folder that just lost its last program
+      if (res.folderRemoved) setOpenFolder(null)
+      else setOpenFolder(await getFolder(folderName))
+      refreshFolders()
+      onFoldersChanged?.()
+    } catch (e) {
+      setError(e.message ?? String(e))
+    }
   }
 
   return (
     <div className={styles.wrap}>
       <Section
         title="Generate a test batch"
-        description="Each batch is saved as a named folder you can run later from the Run view."
+        description="Random RV64I programs from riscv-dv, saved as a named folder to run from the Experiments view."
       >
         <div className={styles.form}>
           <label className={styles.field} style={{ gridColumn: '1 / -1' }}>
@@ -137,17 +197,17 @@ export default function TestsView({ live, health, onFoldersChanged }) {
             {busy ? 'Generating…' : 'Generate tests'}
           </button>
           <span className={styles.or}>or</span>
-          <button type="button" className={styles.secondary} onClick={() => fileRef.current?.click()} disabled={busy}>
-            <Icon name="upload" size={15} /> Upload your own .S programs
+          <button type="button" className={styles.secondary} onClick={() => fileRef.current?.click()} disabled={busy || uploading}>
+            <Icon name="upload" size={15} /> {uploading ? 'Uploading…' : 'Upload your own .S programs'}
           </button>
           <input ref={fileRef} type="file" accept=".S,.s" multiple hidden
                  onChange={(e) => onUploadPrograms(e.target.files)} />
         </div>
         {error && <p className={styles.error}><Icon name="alert" size={15} /> {error}</p>}
-        {log.length > 0 && <pre className={styles.log} ref={logRef}>{log.join('\n')}</pre>}
+        <LogPane lines={log} label="Generator output" />
       </Section>
 
-      <Section title="Test library" description="Saved folders. Open one to see its programs; run them from the Run view.">
+      <Section title="Test library" description="Saved folders. Open one to see its programs; run them from the Experiments view.">
         {folders.length === 0 ? (
           <EmptyState icon="folder" title="No test folders yet"
             hint="Generate a batch above to create your first folder." />
@@ -155,17 +215,31 @@ export default function TestsView({ live, health, onFoldersChanged }) {
           <ul className={styles.folders}>
             {folders.map((f) => (
               <li key={f.name} className={styles.folder}>
-                <button type="button" className={styles.folderHead} onClick={() => toggleFolder(f.name)}>
-                  <Icon name="folder" size={16} />
-                  <span className={styles.folderName}>{f.name}</span>
-                  <span className={styles.folderCount}>{f.count} test{f.count === 1 ? '' : 's'}</span>
-                </button>
+                <div className={styles.folderRow}>
+                  <button type="button" className={styles.folderHead} onClick={() => toggleFolder(f.name)}>
+                    <Icon name="folder" size={16} />
+                    <span className={styles.folderName}>{f.name}</span>
+                    <span className={styles.folderCount}>{f.count} test{f.count === 1 ? '' : 's'}</span>
+                  </button>
+                  <button type="button" className={styles.del}
+                          onClick={() => onDeleteFolder(f.name)}
+                          title={`Delete folder ${f.name}`}
+                          aria-label={`Delete folder ${f.name}`}>
+                    <Icon name="trash" size={15} />
+                  </button>
+                </div>
                 {openFolder?.name === f.name && (
                   <ul className={styles.testList}>
                     {openFolder.tests.map((t) => (
                       <li key={t.name} className={styles.testRow}>
                         <span className={styles.testName}>{t.name}</span>
                         <span className={styles.testInstr}>{t.instrCount} instr</span>
+                        <button type="button" className={styles.delTest}
+                                onClick={() => onDeleteTest(f.name, t.name)}
+                                title={`Delete ${t.name}`}
+                                aria-label={`Delete test ${t.name}`}>
+                          <Icon name="trash" size={13} />
+                        </button>
                       </li>
                     ))}
                   </ul>

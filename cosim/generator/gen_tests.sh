@@ -50,7 +50,9 @@ DV_URL="${RISCV_DV_URL:-https://github.com/chipsalliance/riscv-dv.git}"
 DV_REF="${RISCV_DV_REF:-b7a0b4b0b51346a3c64f159f81ea262d867c14a9}"
 DV_DIR="${RISCV_DV_DIR:-$GEN_DIR/riscv-dv}"
 
-PATCH="$GEN_DIR/patches/0001-add-rv64i-target.patch"
+# Every patch in patches/, applied in name order. Add a NNNN-*.patch file to
+# carry another upstream fix; nothing else needs to change.
+PATCH_DIR="$GEN_DIR/patches"
 
 # ---------------------------------------------------------------- riscv-dv ---
 if [[ ! -d "$DV_DIR/.git" ]]; then
@@ -74,7 +76,11 @@ fi
 # an already-applied patch.
 echo "==> Applying DINO patches + config to riscv-dv"
 git -C "$DV_DIR" checkout -q -- .
-git -C "$DV_DIR" apply "$PATCH"
+for p in "$PATCH_DIR"/*.patch; do
+    [[ -e "$p" ]] || continue
+    echo "    $(basename "$p")"
+    git -C "$DV_DIR" apply "$p"
+done
 
 # rv64i isn't an upstream target, so its testlist and core setting are ours.
 mkdir -p "$DV_DIR/target/rv64i" "$DV_DIR/pygen/pygen_src/target/rv64i"
@@ -94,20 +100,62 @@ if [[ ! -d "$VENV" ]]; then
             if command -v "$c" >/dev/null 2>&1; then PY="$c"; break; fi
         done
     fi
+    # Windows ships no python3.N commands; the py launcher knows the versions.
+    if [[ -z "$PY" ]] && command -v py >/dev/null 2>&1; then
+        for v in 3.11 3.12 3.10; do
+            if py "-$v" --version >/dev/null 2>&1; then PY="py -$v"; break; fi
+        done
+    fi
     if [[ -z "$PY" ]]; then
-        echo "error: need Python 3.10-3.12 for pyvsc/PyBoolector (found $(python3 --version))." >&2
-        echo "       install one (e.g. 'brew install python@3.11') or set PYTHON=/path/to/python3.11" >&2
+        found="$(python3 --version 2>&1 || echo 'no python3')"
+        echo "error: need Python 3.10-3.12 for pyvsc/PyBoolector (found $found)." >&2
+        echo "       install one (e.g. 'brew install python@3.11', or py -3.12 on Windows)" >&2
+        echo "       or set PYTHON=/path/to/python3.11" >&2
         exit 1
     fi
     echo "==> Creating venv at $VENV using $PY ($($PY --version))"
-    "$PY" -m venv "$VENV"
-    "$VENV/bin/pip" install --quiet --upgrade pip
-    "$VENV/bin/pip" install --quiet -r "$GEN_DIR/requirements.txt"
+    $PY -m venv "$VENV"
+    # posix venvs put executables in bin/, Windows venvs in Scripts/
+    VB="$VENV/bin"; [[ -d "$VB" ]] || VB="$VENV/Scripts"
+    # `python -m pip`, not the pip shim: on Windows pip.exe cannot replace itself.
+    "$VB/python" -m pip install --quiet --upgrade pip
+
+    # Remove a half-built venv so the next run rebuilds it instead of failing on
+    # a missing import. `rc` is captured explicitly because inside `if ! cmd`,
+    # $? is the status of the negation rather than of cmd.
+    rc=0
+    "$VB/python" -m pip install --quiet -r "$GEN_DIR/requirements.txt" || rc=$?
+    if (( rc != 0 )); then
+        rm -rf "$VENV"
+        echo "" >&2
+        echo "error: could not install the riscv-dv generator dependencies." >&2
+        if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* || "$(uname -s)" == CYGWIN* ]]; then
+            cat >&2 <<'WINMSG'
+
+       pyvsc requires PyBoolector, which publishes no Windows wheel and whose
+       sdist does not build (it omits CMakeLists.txt). Generation must run under
+       WSL:
+
+           wsl
+           cd /mnt/c/path/to/simplechisel-fork
+           TESTS=10 cosim/generator/gen_tests.sh
+
+       The rest of the cosim toolchain (verilator, spike, riscv64 gcc) is also
+       Linux/macOS-only. The other experiments run natively on Windows.
+WINMSG
+        else
+            echo "       check the pip output above; try: $VB/python -m pip install -r $GEN_DIR/requirements.txt" >&2
+        fi
+        exit "$rc"
+    fi
 fi
 
+VENV_BIN="$VENV/bin"
+[[ -d "$VENV_BIN" ]] || VENV_BIN="$VENV/Scripts"
+
 # run.py shells out to a bare `python3` (see riscv-dv's yaml/simulator.yaml),
-# so the venv has to be on PATH -- calling .venv/bin/python is not enough.
-export PATH="$VENV/bin:$PATH"
+# so the venv has to be on PATH -- calling the venv python is not enough.
+export PATH="$VENV_BIN:$PATH"
 
 # pygen's test entry point does a relative `sys.path.append("pygen/")`, so it
 # only imports cleanly when cwd happens to be the riscv-dv root. Put pygen on

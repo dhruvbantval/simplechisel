@@ -1,10 +1,24 @@
 # Spike vs DINO cosimulation
 
-Run from Ubuntu/WSL at the repository root:
+Run from the repository root on macOS or Linux, or from WSL on Windows — the
+toolchain (verilator, spike, the RISC-V cross-compiler) has no Windows build:
 
 ```bash
 STEPS=80 JOBS=4 cosim/run_cosim.sh
 ```
+
+Install the toolchain first; see
+[../farm/README.md](../farm/README.md#installing-the-system-tools) for the
+per-platform commands. `spike` is not packaged by apt or Homebrew core, so
+[install_spike.sh](install_spike.sh) builds it from source:
+
+```bash
+bash cosim/install_spike.sh          # installs to ~/.local
+PREFIX=/usr/local bash cosim/install_spike.sh
+```
+
+Driving cosim from the dashboard instead needs no manual WSL step: on Windows the
+backend routes both generation and runs through WSL against this same checkout.
 
 To run a folder of generated tests:
 

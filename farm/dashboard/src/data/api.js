@@ -45,21 +45,36 @@ export const getRecords = () => req('/api/records')
 
 // Experiment types (domains) the farm can run, and the non-cosim domains' runs.
 export const getExperiments = () => req('/api/experiments')
-export const getCampaignCases = (type) => req(`/api/campaign/${encodeURIComponent(type)}/cases`)
-export const startCampaign = (type) => post('/api/campaign/run', { type })
+// `batch` scopes the case list to one saved batch (omit for every case).
+export const getCampaignCases = (type, batch) =>
+  req(`/api/campaign/${encodeURIComponent(type)}/cases`
+      + (batch ? `?batch=${encodeURIComponent(batch)}` : ''))
+// `batch` scopes the run the same way picking a cosim folder does.
+export const startCampaign = (type, batch) => post('/api/campaign/run', { type, batch })
 export const uploadCase = (type, files, params, encoding) => // files: [{name,content}]
   post(`/api/campaign/${encodeURIComponent(type)}/upload`, { files, params, encoding })
 export const runCustomCase = (type, params) =>
   post(`/api/campaign/${encodeURIComponent(type)}/custom`, { params })
-// Synthesize N test cases for this experiment (saved so they appear in the case
-// list and run alongside the configured cases). Returns {type, count, cases}.
-export const generateCases = (type, count) =>
-  post(`/api/campaign/${encodeURIComponent(type)}/generate`, { count })
+
+/*
+ * Generated test batches — the campaign-side equivalent of cosim's test folders.
+ * Generate into a *named* batch (re-using a name appends to it), list the saved
+ * batches, or delete one.
+ */
+export const generateCases = (type, count, name) =>
+  post(`/api/campaign/${encodeURIComponent(type)}/generate`, { count, name })
+export const getBatches = (type) => req(`/api/campaign/${encodeURIComponent(type)}/batches`)
+export const deleteBatch = (type, name) =>
+  post(`/api/campaign/${encodeURIComponent(type)}/batches/delete`, { name })
 export const getJob = (jobId, since = 0) => req(`/api/jobs/${jobId}?since=${since}`)
 
 // Test library: generate saves a named folder; run executes a folder.
 export const getFolders = () => req('/api/folders')
 export const getFolder = (name) => req(`/api/folders/${encodeURIComponent(name)}`)
+// Delete a whole folder, or one program from it (the folder is removed too if
+// that was its last program — an empty folder is only ever debris).
+export const deleteFolder = (folder) => post('/api/folders/delete', { folder })
+export const deleteTest = (folder, test) => post('/api/tests/delete', { folder, test })
 export const startGenerate = (params) => post('/api/generate', params) // {name,tests,instrCnt,type}
 export const uploadTests = (folder, files) => post('/api/upload-tests', { folder, files }) // your own .S
 export const startRun = (params) => post('/api/run', params) // {folder, steps}

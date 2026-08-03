@@ -23,8 +23,9 @@
     transform 0.12s ease;
 }
 
+/* :focus-visible, not :focus-within: a mouse click must not pin the bubble. */
 .wrap:hover .bubble,
-.wrap:focus-within .bubble {
+.wrap:has(:focus-visible) .bubble {
   opacity: 1;
   transform: translateY(0);
 }
@@ -36,7 +37,7 @@
   transform: translate(-50%, 2px);
 }
 .wrap[data-side='top']:hover .bubble,
-.wrap[data-side='top']:focus-within .bubble {
+.wrap[data-side='top']:has(:focus-visible) .bubble {
   transform: translate(-50%, 0);
 }
 
@@ -46,7 +47,7 @@
   transform: translate(-2px, -50%);
 }
 .wrap[data-side='right']:hover .bubble,
-.wrap[data-side='right']:focus-within .bubble {
+.wrap[data-side='right']:has(:focus-visible) .bubble {
   transform: translate(0, -50%);
 }
 
@@ -56,6 +57,6 @@
   transform: translate(-50%, -2px);
 }
 .wrap[data-side='bottom']:hover .bubble,
-.wrap[data-side='bottom']:focus-within .bubble {
+.wrap[data-side='bottom']:has(:focus-visible) .bubble {
   transform: translate(-50%, 0);
 }

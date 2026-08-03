@@ -12,26 +12,42 @@ and patches it. That's why there are 8 files here instead of a 60-file fork.
 ## Step 1 — Check prerequisites
 
 ```bash
-python3.11 --version
+python3.11 --version     # or python3.12 / python3.10
 git --version
 ```
 
-If `python3.11` says "command not found":
+If none of those exist:
 
 ```bash
-brew install python@3.11
+brew install python@3.11                # macOS
+sudo apt install -y python3.11-venv     # Debian / Ubuntu / WSL
 ```
 
-**Why 3.11:** the generator needs `pyvsc`, which fails to install on Python
-3.13+. Your default `python3` may be newer — that's fine, the script finds a
-3.11 on its own. If yours lives somewhere unusual, pass
-`PYTHON=/path/to/python3.11`.
+**Why 3.10–3.12:** the generator needs `pyvsc`, whose `PyBoolector` dependency
+publishes no wheels for 3.13+. Your default `python3` may be newer — that's fine,
+the script finds a supported one itself (including via the `py` launcher on
+Windows). If yours lives somewhere unusual, pass `PYTHON=/path/to/python3.11`.
+
+**Windows:** `PyBoolector` has no Windows wheel at all and its sdist does not
+build, so generation cannot run natively. Run this inside WSL:
+
+```bash
+wsl
+cd /mnt/c/path/to/simplechisel-fork
+TESTS=10 cosim/generator/gen_tests.sh
+```
+
+Driving it from the dashboard needs no manual step — the backend detects Windows
+and routes generation through WSL against this same checkout, so the generated
+`.S` files still land in your Windows tree.
 
 ## Step 2 — Make the script executable (first time only)
 
 ```bash
 chmod +x cosim/generator/gen_tests.sh
 ```
+
+(Not needed on Windows; the backend invokes it via `bash`.)
 
 ## Step 3 — Generate the tests
 

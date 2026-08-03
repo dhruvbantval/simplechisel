@@ -24,16 +24,28 @@ automatically on the next run after the bug set changes.
 
 ---
 
-## Run it (one command)
+## Run it
+
+**macOS / Linux** — one command builds the dashboard and serves it with the API:
 
 ```bash
 farm/webapp/serve.sh
 ```
 
-Open the printed URL (default <http://127.0.0.1:8000>), go to **Generate**, set
-the batch size, and click **Generate tests**. First launch builds the dashboard
-and, on the first generate, the CPU simulator (~2 min once); after that each
-batch is seconds.
+**Windows** — `serve.sh` is a bash script, so run it from Git Bash. Or build the
+dashboard once and start the backend directly from PowerShell:
+
+```powershell
+cd farm\dashboard; npm install; npm run build; cd ..\..
+Remove-Item -Recurse -Force farm\webapp\static -ErrorAction SilentlyContinue
+Copy-Item -Recurse farm\dashboard\dist farm\webapp\static
+farm\.venv\Scripts\python farm\webapp\server.py
+```
+
+Open the printed URL (default <http://127.0.0.1:8000>), go to **Tests**, set the
+batch size, and click **Generate tests**. First launch builds the dashboard and,
+on the first cosim run, the CPU simulator (~2 min once); after that each batch is
+seconds.
 
 For hot-reload development (Vite on :5173 + backend on :8000):
 
@@ -41,19 +53,18 @@ For hot-reload development (Vite on :5173 + backend on :8000):
 farm/webapp/dev.sh
 ```
 
+`PORT=9000` overrides the port for either script.
+
 ### Prerequisites
 
-The backend shells out to the real toolchain, so it must be installed and on
-PATH: `node`, `sbt`, `verilator`, `spike`, and a RISC-V bare-metal gcc
-(`riscv64-elf-gcc` + `riscv64-elf-binutils`, or `riscv64-unknown-elf-*`). On
-macOS:
+`node` for the dashboard, plus whatever the experiments you run need. The backend
+shells out to the real toolchain, so those tools must be installed —
+[../README.md](../README.md#installing-the-system-tools) has the per-platform
+table. `GET /api/health` reports what it found, per experiment.
 
-```bash
-brew install node verilator riscv64-elf-gcc riscv64-elf-binutils dtc
-brew tap riscv-software-src/riscv && brew install riscv-isa-sim   # spike
-```
-
-`GET /api/health` reports which tools it found.
+For `cosim` specifically: `sbt`, `verilator`, `spike`, and a RISC-V bare-metal gcc
+(`riscv64-elf-gcc` or `riscv64-unknown-elf-gcc`). On Windows these live inside
+WSL and the backend runs cosim there; `/api/health` probes WSL accordingly.
 
 ## What you can do from the site
 

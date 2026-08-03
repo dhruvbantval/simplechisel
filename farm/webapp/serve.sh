@@ -30,6 +30,8 @@ echo "==> Starting backend + site on http://127.0.0.1:$PORT"
 echo "    Open it, go to Generate, and click Generate tests."
 # Prefer the farm venv: it has PyYAML (for farm.yaml) and the
 # experiment dependencies.
+# posix venvs put the interpreter in bin/, Windows venvs in Scripts/
 PYBIN="$WEBAPP/../.venv/bin/python"
+[ -x "$PYBIN" ] || PYBIN="$WEBAPP/../.venv/Scripts/python.exe"
 [ -x "$PYBIN" ] || PYBIN=python3
 exec "$PYBIN" "$WEBAPP/server.py"

@@ -70,21 +70,6 @@
   margin-top: var(--space-3);
 }
 
-.log {
-  margin-top: var(--space-4);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  line-height: 1.5;
-  color: var(--text-muted);
-  background: var(--bg-inset);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
-  padding: var(--space-3) var(--space-4);
-  max-height: 260px;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
 
 .folders {
   list-style: none;
@@ -99,6 +84,43 @@
   border: 1px solid var(--hairline);
   border-radius: var(--radius);
   overflow: hidden;
+}
+
+/* header row with a trailing delete action */
+.folderRow {
+  display: flex;
+  align-items: stretch;
+  background: var(--bg-raised);
+}
+.folderRow .folderHead {
+  flex: 1;
+}
+
+.del {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-4);
+  background: none;
+  border: none;
+  border-left: 1px solid var(--hairline);
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.del:hover {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.note {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-sm);
+  color: var(--success);
+}
+
+.fieldHint {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
 }
 
 .folderHead {
@@ -138,8 +160,9 @@
 
 .testRow {
   display: flex;
-  justify-content: space-between;
-  padding: var(--space-2) var(--space-4);
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--text-muted);
@@ -151,6 +174,32 @@
 
 .testName {
   color: var(--text);
+  flex: 1;
+}
+
+.testInstr {
+  font-variant-numeric: tabular-nums;
+}
+
+/* per-program delete, revealed on row hover or focus */
+.delTest {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  cursor: pointer;
+  opacity: 0;
+}
+.testRow:hover .delTest,
+.delTest:focus-visible {
+  opacity: 1;
+}
+.delTest:hover {
+  color: var(--danger);
+  background: var(--danger-bg);
 }
 
 .genRow {

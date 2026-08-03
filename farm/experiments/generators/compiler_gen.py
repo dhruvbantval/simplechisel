@@ -13,9 +13,9 @@ import random
 import sys
 from pathlib import Path
 
-# Generated programs live OUTSIDE the curated corpus dir so they don't get
-# double-counted by the corpus glob and don't pile up there permanently. This
-# dir is wiped each run, matching the "replace" semantics of the generated store.
+# Generated programs live outside the curated corpus dir so the corpus glob does
+# not double-count them. Files accumulate across runs because each saved batch
+# keeps referencing its own; deleting a batch removes the files it owns.
 OUT = Path(__file__).resolve().parents[1].parent / "build" / "generated" / "compiler"
 
 OPS = ["+", "-", "*", "^", "&", "|"]
@@ -46,12 +46,12 @@ def random_program(seed: int) -> str:
 
 def main():
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 5
-    if OUT.exists():
-        for old in OUT.glob("*.c"):
-            old.unlink()
     OUT.mkdir(parents=True, exist_ok=True)
     cases = []
+    # a fresh prefix per run keeps names unique across batches
     base = random.randint(0, 10_000)
+    while any(OUT.glob(f"gen_{base}_*.c")):
+        base = random.randint(0, 10_000)
     for k in range(n):
         name = f"gen_{base}_{k}.c"
         path = OUT / name

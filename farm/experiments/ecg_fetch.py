@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Fetch a few MIT-BIH Arrhythmia Database records for the ECG experiment.
+r"""Fetch a few MIT-BIH Arrhythmia Database records for the ECG experiment.
 
 The recordings and their cardiologist annotations are not committed (they're
 someone else's dataset, and large). Run this once after installing the ECG
 requirements:
 
-    farm/.venv/bin/python farm/experiments/ecg_fetch.py
-    farm/.venv/bin/python farm/experiments/ecg_fetch.py 100 101 103
+    farm/.venv/bin/python farm/experiments/ecg_fetch.py            # macOS / Linux
+    farm\.venv\Scripts\python farm/experiments/ecg_fetch.py         # Windows
+
+    ... ecg_fetch.py 100 101 103    # or name the records to fetch
 
 Files land in farm/data/mitdb/ (git-ignored). Source: PhysioNet, needs network.
 """

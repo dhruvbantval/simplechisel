@@ -16,7 +16,9 @@ JSON object for the adapter to read.
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -34,12 +36,28 @@ C1 out 0 {c}
 """
 
 
+def ngspice_bin() -> str:
+    """The ngspice executable that writes to stdout.
+
+    The Windows build ships ngspice.exe (windowed, produces no piped output) and
+    ngspice_con.exe (console). Prefer the console build. NGSPICE overrides.
+    """
+    override = os.environ.get("NGSPICE")
+    if override:
+        return override
+    for name in ("ngspice_con", "ngspice"):
+        if shutil.which(name):
+            return name
+    return "ngspice"
+
+
 def run_ngspice(r, c, vin, tstop, step):
     with tempfile.TemporaryDirectory() as d:
         cir = Path(d) / "rc.cir"
         cir.write_text(NETLIST.format(r=r, c=c, vin=vin, tstop=tstop, step=step))
-        proc = subprocess.run(["ngspice", "-b", str(cir)],
-                              capture_output=True, text=True)
+        proc = subprocess.run([ngspice_bin(), "-b", str(cir)],
+                              capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
         return proc.stdout + proc.stderr
 
 

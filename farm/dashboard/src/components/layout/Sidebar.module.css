@@ -20,21 +20,19 @@
   padding: 0 var(--space-2) var(--space-5);
 }
 .brandMark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 30px;
   height: 30px;
+  flex-shrink: 0;
   border-radius: var(--radius);
-  background: var(--accent-bg);
-  color: var(--accent-strong);
-  border: 1px solid var(--accent-border);
+  border: 1px solid var(--hairline-strong);
+  object-fit: cover;
 }
 .brandText {
-  font-size: var(--text-md);
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--text-strong);
   letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 .brandThin {
   color: var(--text-muted);
@@ -75,6 +73,20 @@
 }
 .upload :global(button) {
   width: 100%;
+}
+
+.navSlot {
+  display: contents;
+}
+
+.navGroup {
+  display: block;
+  padding: var(--space-4) var(--space-3) var(--space-1);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
 
 .summary {

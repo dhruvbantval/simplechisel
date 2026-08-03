@@ -15,7 +15,9 @@ BACKEND_PORT="${PORT:-8000}"
 ( cd "$DASH"; [ -d node_modules ] || npm install )
 
 echo "==> Starting backend on :$BACKEND_PORT"
+# posix venvs put the interpreter in bin/, Windows venvs in Scripts/
 PYBIN="$WEBAPP/../.venv/bin/python"
+[ -x "$PYBIN" ] || PYBIN="$WEBAPP/../.venv/Scripts/python.exe"
 [ -x "$PYBIN" ] || PYBIN=python3
 PORT="$BACKEND_PORT" "$PYBIN" "$WEBAPP/server.py" &
 BACKEND_PID=$!

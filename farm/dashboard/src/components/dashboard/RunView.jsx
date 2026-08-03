@@ -8,19 +8,23 @@
  * If there are no test folders yet, this points the user at the Tests view
  * rather than showing an empty dropdown.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Section from '../primitives/Section'
 import EmptyState from '../primitives/EmptyState'
 import Icon from '../primitives/Icon'
+import LogPane from '../primitives/LogPane'
 import MutationsPanel from './MutationsPanel'
 import CpuPanel from './CpuPanel'
 import CampaignPanel from './CampaignPanel'
+import ExperimentTabs from './ExperimentTabs'
+import InstallNeeded from './InstallNeeded'
 import {
-  getExperiments, getFolders, getInjected, getMutations, injectBug, pollJob, resetBugs, startRun,
+  getExperiments, getFolders, getInjected, getMutations, injectBug, resetBugs, startRun,
 } from '../../data/api'
+import { useJobs } from '../../data/jobs'
 import styles from './RunView.module.css'
 
-export default function RunView({ live, onRunReady, onNavigate }) {
+export default function RunView({ live, health, onRunReady, onNavigate, onCampaignDone }) {
   const [folders, setFolders] = useState([])
   const [folder, setFolder] = useState('')
   const [steps, setSteps] = useState(80)
@@ -37,12 +41,19 @@ export default function RunView({ live, onRunReady, onNavigate }) {
     if (live) getExperiments().then(setExperiments).catch(() => setExperiments([]))
   }, [live])
 
-  const [busy, setBusy] = useState(false)
-  const [label, setLabel] = useState(null)
-  const [log, setLog] = useState([])
-  const [result, setResult] = useState(null)
-  const [error, setError] = useState(null)
-  const logRef = useRef(null)
+  // Tracked in the job store so leaving this view does not cancel the run.
+  const { startJob, jobFor } = useJobs()
+  const job = jobFor('cosim:run')
+  const busy = job.busy
+  const log = job.log
+  const error = job.error
+  const result = job.result
+    ? { passed: job.result.passed, total: job.result.totalTests,
+        runId: job.result.runId, mutationLabel: job.result.mutationLabel }
+    : null
+  const label = busy ? job.label : null
+
+  const [injectError, setInjectError] = useState(null)
 
   const refreshInjected = useCallback(() => {
     if (live) getInjected().then((s) => setInjected(s.injected ?? [])).catch(() => {})
@@ -58,56 +69,41 @@ export default function RunView({ live, onRunReady, onNavigate }) {
     refreshInjected()
   }, [live, refreshInjected])
 
-  useEffect(() => {
-    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
-  }, [log])
 
-  async function onRun() {
+  function onRun() {
     if (!folder) return
-    setBusy(true)
-    setLabel(`Running “${folder}”${injected.length ? ` with ${injected.length} bug(s)` : ''}`)
-    setLog([])
-    setResult(null)
-    setError(null)
-    try {
-      const { jobId } = await startRun({ folder, steps: Number(steps) })
-      const snap = await pollJob(jobId, { onLog: (lines) => setLog((p) => [...p, ...lines]) })
-      if (snap.status === 'error') {
-        setError(snap.error || 'run failed')
-      } else if (snap.run) {
-        setResult({
-          passed: snap.run.passed, total: snap.run.totalTests,
-          runId: snap.run.runId, mutationLabel: snap.run.mutationLabel,
-        })
-        await onRunReady?.(snap.run)
-      }
-    } catch (err) {
-      setError(err.message ?? String(err))
-    } finally {
-      setBusy(false)
-      setLabel(null)
-    }
+    startJob({
+      key: 'cosim:run',
+      kind: 'cosim-run',
+      label: `Running “${folder}”${injected.length ? ` with ${injected.length} bug(s)` : ''}`,
+      view: 'run',
+      start: () => startRun({ folder, steps: Number(steps) }),
+      describe: (snap) => snap.run
+        ? `${snap.run.passed}/${snap.run.totalTests} tests passed`
+        : undefined,
+      onComplete: (snap) => { if (snap.run) onRunReady?.(snap.run) },
+    })
   }
 
   const onInject = async (fn) => {
-    setError(null)
+    setInjectError(null)
     try {
       const res = await injectBug(fn)
-      if (!res.ok) setError(res.error || 'inject failed')
+      if (!res.ok) setInjectError(res.error || 'inject failed')
       setInjected(res.injected ?? injected)
       refreshInjected()
     } catch (err) {
-      setError(err.message ?? String(err))
+      setInjectError(err.message ?? String(err))
     }
   }
 
   const onReset = async () => {
-    setError(null)
+    setInjectError(null)
     try {
       await resetBugs()
       setInjected([])
     } catch (err) {
-      setError(err.message ?? String(err))
+      setInjectError(err.message ?? String(err))
     }
   }
 
@@ -125,28 +121,23 @@ export default function RunView({ live, onRunReady, onNavigate }) {
 
   const tabs = experiments.length ? experiments
     : [{ type: 'cosim', label: 'CPU cosim' }]
+  const toolsByType = health?.experimentTools ?? {}
+  const missing = toolsByType[experiment]?.missing ?? []
 
   return (
     <>
-      <div className={styles.expTabs} role="tablist">
-        {tabs.map((e) => (
-          <button
-            key={e.type}
-            type="button"
-            role="tab"
-            aria-selected={experiment === e.type}
-            className={`${styles.expTab} ${experiment === e.type ? styles.expTabActive : ''}`}
-            onClick={() => setExperiment(e.type)}
-            disabled={busy}
-          >
-            {e.label}
-            {e.golden && <span className={styles.expTabSub}>vs {e.golden}</span>}
-          </button>
-        ))}
-      </div>
+      {/* Not disabled while a run is in flight: jobs are tracked per experiment
+          in the job store and keep going across tab switches. */}
+      <ExperimentTabs tabs={tabs} active={experiment} onSelect={setExperiment}
+                      toolsByType={toolsByType} />
+
+      {missing.length > 0 && (
+        <InstallNeeded missing={missing} inWsl={toolsByType[experiment]?.wsl} />
+      )}
 
       {experiment !== 'cosim' ? (
-        <CampaignPanel live={live} experiment={tabs.find((e) => e.type === experiment)} />
+        <CampaignPanel live={live} experiment={tabs.find((e) => e.type === experiment)}
+                       missingTools={missing} onDone={onCampaignDone} />
       ) : (
     <div className={styles.layout}>
       <div className={styles.main}>
@@ -203,12 +194,15 @@ export default function RunView({ live, onRunReady, onNavigate }) {
               </div>
             )}
             {error && <p className={styles.error}><Icon name="alert" size={15} /> {error}</p>}
-            {log.length > 0 && <pre className={styles.log} ref={logRef}>{log.join('\n')}</pre>}
+            <LogPane lines={log} label="Run output" />
           </Section>
         )}
       </div>
 
       <aside className={styles.side}>
+        {injectError && (
+          <p className={styles.error}><Icon name="alert" size={15} /> {injectError}</p>
+        )}
         <MutationsPanel
           mutations={mutations}
           injected={injected}

@@ -1,12 +1,59 @@
-.wrap {
+/* small multiples — several domains readable on one screen */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.card {
   display: flex;
   flex-direction: column;
-  gap: var(--space-7);
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
 }
+/* an expanded card takes the full row so its table has room */
+.cardOpen {
+  grid-column: 1 / -1;
+}
+
+.cardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.cardSub {
+  margin: 2px 0 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.headline {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-strong);
+}
+.toneOk { color: var(--success); }
+.toneWarn { color: var(--warning); }
+.toneBad { color: var(--danger); }
+
+/* --- chart ---------------------------------------------------------------- */
 
 .chartWrap {
   position: relative;
-  margin-bottom: var(--space-5);
 }
 
 .chart {
@@ -16,19 +63,17 @@
   overflow: visible;
 }
 
-/* recessive grid + axes */
-.grid {
+.gridline {
   stroke: var(--hairline);
   stroke-width: 1;
 }
 
 .axisText {
-  fill: var(--text-muted);
-  font-size: 11px;
+  fill: var(--text-faint);
+  font-size: 9px;
   font-variant-numeric: tabular-nums;
 }
 
-/* the single series line — accent, 2px, per mark specs */
 .line {
   stroke: var(--accent);
   stroke-width: 2;
@@ -37,7 +82,7 @@
 }
 
 .marker {
-  fill: var(--bg);
+  fill: var(--bg-raised);
   stroke: var(--accent);
   stroke-width: 2;
 }
@@ -52,16 +97,83 @@
 
 .lastLabel {
   fill: var(--text-strong);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
-/* hover tooltip */
+/* --- single-version state ------------------------------------------------- */
+
+.single {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+}
+
+.singleRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.singleLabel {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.singleVal {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.singleHint {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  line-height: 1.45;
+}
+
+/* --- expand + table ------------------------------------------------------- */
+
+.expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  align-self: flex-start;
+  padding: var(--space-1) var(--space-2);
+  margin-left: calc(var(--space-2) * -1);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.expand:hover {
+  color: var(--accent-strong);
+  background: var(--bg-hover);
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border-top: 1px solid var(--hairline);
+  padding-top: var(--space-3);
+}
+
+/* --- hover tooltip -------------------------------------------------------- */
+
 .tip {
   position: absolute;
-  transform: translate(-50%, calc(-100% - 12px));
-  background: var(--bg-raised);
+  transform: translate(-50%, calc(-100% - 10px));
+  background: var(--bg-inset);
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-3);
@@ -69,7 +181,7 @@
   color: var(--text);
   white-space: nowrap;
   pointer-events: none;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
   z-index: 5;
 }
 

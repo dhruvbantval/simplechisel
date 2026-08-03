@@ -1,0 +1,25 @@
+Use importlib.reload instead of the removed `imp` module (Python 3.12+).
+
+riscv-dv's pygen does `from imp import reload`. The `imp` module was deprecated
+in 3.4 and **removed in Python 3.12**, so on a modern interpreter every pygen run
+dies at import with:
+
+    ModuleNotFoundError: No module named 'imp'
+
+`reload` has lived in `importlib` since 3.4, and this file already imports
+`import_module` from `importlib` two lines down, so this is a straight swap with
+no behaviour change. Without it, generation needs Python <= 3.11 -- which is
+awkward, since pyvsc's PyBoolector dependency separately caps the usable range.
+
+diff --git a/pygen/pygen_src/isa/riscv_instr.py b/pygen/pygen_src/isa/riscv_instr.py
+--- a/pygen/pygen_src/isa/riscv_instr.py
++++ b/pygen/pygen_src/isa/riscv_instr.py
+@@ -15,7 +15,7 @@ import copy
+ import sys
+ import random
+ import vsc
+-from imp import reload
++from importlib import reload
+ from collections import defaultdict
+ from bitstring import BitArray
+ from importlib import import_module

@@ -3,7 +3,8 @@
 #
 # The MIT-BIH recordings are NOT installed by pip and are not committed.
 # Fetch them once (needs network):
-#   farm/.venv/bin/python farm/experiments/ecg_fetch.py
+#   farm/.venv/bin/python farm/experiments/ecg_fetch.py       (macOS / Linux)
+#   farm\.venv\Scripts\python farm/experiments/ecg_fetch.py    (Windows)
 numpy>=1.24            # tested with 2.4.6
 wfdb>=4.1              # reads MIT-BIH records + .atr annotations; tested with 4.3.1
 neurokit2>=0.2         # the R-peak detector under test; tested with 0.2.13

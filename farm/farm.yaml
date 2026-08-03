@@ -82,10 +82,11 @@ experiments:
         - { name: kp, label: "kp", default: 2.0 }
         - { name: ki, label: "ki", default: 1.0 }
         - { name: kd, label: "kd", default: 0.5 }
-    # "Generate tests" sweeps N random gain sets through the reference controller
-    # (a stress test of the spec judge across the gain space).
+    # "Generate tests" samples N random gain sets, keeping only those the
+    # reference controller already satisfies, so every case is one a correct
+    # controller passes.
     generate:
-      label: random gain sweeps
+      label: screened gain sets
       script: farm/experiments/generators/control_gen.py
       default: 5
     # To test YOUR controller: copy farm/experiments/controllers/pid_reference.py,
@@ -117,7 +118,8 @@ experiments:
     metric: sensitivity
     ui: campaign
     requirements: farm/requirements/ecg.txt
-    setup: farm/.venv/bin/python farm/experiments/ecg_fetch.py
+    # {python} is substituted with this platform's venv interpreter.
+    setup: "{python} farm/experiments/ecg_fetch.py"
     # Upload your own recording: a WFDB record is three files that share a base
     # name (205.dat + 205.hea + 205.atr). The .atr is the golden — the expert beat
     # labels — so this is genuinely "your own annotated data".
@@ -132,11 +134,11 @@ experiments:
       keep_names: true        # WFDB needs the files kept as <name>.dat/.hea/.atr
       params:
         - { name: seconds, label: "seconds (0 = all)", default: 0 }
-    # "Generate tests" synthesizes N ECGs with QRS spikes at known positions and
-    # writes them as WFDB records whose .atr IS the ground truth — synthetic data
-    # with perfect labels, scored by the same detector.
+    # "Generate tests" downloads N more real MIT-BIH recordings that aren't
+    # present yet. Synthetic ECGs are not generated: a clean signal with spikes
+    # where we put them is passed by any detector and measures nothing.
     generate:
-      label: synthetic ECGs
+      label: more real MIT-BIH records
       script: farm/experiments/generators/ecg_gen.py
       default: 3
     # Or run any record already in farm/data/mitdb by number.

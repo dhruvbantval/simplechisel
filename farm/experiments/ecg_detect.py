@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One ECG experiment: a heartbeat detector vs cardiologists' annotations.
+r"""One ECG experiment: a heartbeat detector vs cardiologists' annotations.
 
 Intern 2's domain. Every heartbeat shows up as a sharp "R peak" in an ECG. The
 MIT-BIH Arrhythmia Database ships expert cardiologist beat labels (.atr files), so
@@ -11,10 +11,20 @@ a detector can be scored against real human ground truth:
             + PPV (what fraction of our detections were real)
 
 A detection counts as correct if it lands within 150 ms of an annotated beat --
-the standard matching tolerance. Prints one JSON object for the adapter.
+the standard matching tolerance.
+
+Scoring skips a short warm-up window (`warmup_seconds`, default 5). The detector
+band-pass filters the signal, and the filter has not settled at the very start of
+the excerpt, so the first beat is missed on essentially every record regardless
+of signal quality. Counting it would charge every record a constant penalty for a
+measurement artifact. AAMI EC57 excludes a learning period for the same reason.
+Both annotations and detections are cut, so TP/FP/FN stay consistent.
+
+Prints one JSON object for the adapter.
 
 Data is not committed. Fetch it once:
-    farm/.venv/bin/python farm/experiments/ecg_fetch.py
+    farm/.venv/bin/python farm/experiments/ecg_fetch.py       (Windows:
+    farm\.venv\Scripts\python farm/experiments/ecg_fetch.py)
 
     python ecg_experiment.py '{"record":"100","seconds":60}'
 """
@@ -66,9 +76,11 @@ def main() -> int:
 
     path = DATA / record
     if not (DATA / f"{record}.dat").exists():
+        py = (r"farm\.venv\Scripts\python" if os.name == "nt"
+              else "farm/.venv/bin/python")
         print(json.dumps({
             "error": f"MIT-BIH record '{record}' not found in {DATA}. "
-                     "Fetch it once: farm/.venv/bin/python farm/experiments/ecg_fetch.py"}))
+                     f"Fetch it once: {py} farm/experiments/ecg_fetch.py"}))
         return 3
 
     import wfdb
@@ -81,11 +93,16 @@ def main() -> int:
     n = min(n, rec.p_signal.shape[0])
 
     signal = np.asarray(rec.p_signal[:n, 0], dtype=float)
-    truth = [s for s, sym in zip(ann.sample, ann.symbol) if sym in BEAT_SYMBOLS and s < n]
 
-    # DUT: the detector under test
+    # DUT: the detector under test. It sees the whole excerpt; only scoring skips
+    # the warm-up, so the filter still has real signal to settle on.
     _, info = nk.ecg_peaks(signal, sampling_rate=fs)
     detected = list(info.get("ECG_R_Peaks", []))
+
+    warmup = int(float(cfg.get("warmup_seconds", 5.0)) * fs)
+    truth = [s for s, sym in zip(ann.sample, ann.symbol)
+             if sym in BEAT_SYMBOLS and warmup <= s < n]
+    detected = [d for d in detected if d >= warmup]
 
     tp, fp, fn = match(detected, truth, tol=int(0.15 * fs))
     sensitivity = tp / len(truth) if truth else 0.0
@@ -97,6 +114,7 @@ def main() -> int:
         "tp": tp, "fp": fp, "fn": fn,
         "true_beats": len(truth), "detected": len(detected),
         "record": record, "seconds": seconds,
+        "warmup_seconds": warmup / fs,
         "min_sensitivity": min_sens,
         "ok": bool(sensitivity >= min_sens),
     }))

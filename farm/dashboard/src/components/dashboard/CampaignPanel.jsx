@@ -6,17 +6,18 @@
  * It knows nothing about PIDs, heartbeats or circuits — all of that lives in the
  * config and the adapter. That's why adding a science needs no new UI.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Section from '../primitives/Section'
 import Icon from '../primitives/Icon'
+import LogPane from '../primitives/LogPane'
 import {
-  generateCases,
+  getBatches,
   getCampaignCases,
-  pollJob,
   runCustomCase,
   startCampaign,
   uploadCase,
 } from '../../data/api'
+import { useJobs } from '../../data/jobs'
 import styles from './RunView.module.css'
 
 // read a File as base64 (for binary uploads like WFDB .dat/.atr)
@@ -29,57 +30,68 @@ function toBase64(file) {
   })
 }
 
-export default function CampaignPanel({ live, experiment }) {
+export default function CampaignPanel({ live, experiment, missingTools = [], onDone }) {
   const [cases, setCases] = useState([])
-  const [busy, setBusy] = useState(false)
-  const [log, setLog] = useState([])
-  const [result, setResult] = useState(null)
-  const [error, setError] = useState(null)
   const [params, setParams] = useState({})
-  const logRef = useRef(null)
   const fileRef = useRef(null)
+
+  // Runs are tracked in the job store so they survive this panel unmounting.
+  const { startJob, jobFor } = useJobs()
 
   const type = experiment?.type
   const upload = experiment?.upload
   const customCase = experiment?.custom_case
-  const generate = experiment?.generate
-  const [genCount, setGenCount] = useState(generate?.default ?? 5)
-  const [genBusy, setGenBusy] = useState(false)
+
+  const jobKey = `campaign:${type}`
+  const job = jobFor(jobKey)
+  const busy = job.busy
+  const log = job.log
+  const error = job.error
+  const result = job.result
+    ? { passed: job.result.passed, total: job.result.totalTests, detail: job.result.detail }
+    : null
+
+  // '' selects every configured and generated case, matching the CLI default.
+  const [batches, setBatches] = useState([])
+  const [batch, setBatch] = useState('')
+
+  const loadCases = useCallback((which) => {
+    if (!live || !type) return
+    getCampaignCases(type, which || undefined)
+      .then((d) => setCases(d.cases || []))
+      .catch(() => setCases([]))
+  }, [live, type])
 
   useEffect(() => {
-    setCases([]); setResult(null); setLog([]); setError(null)
-    setGenCount(generate?.default ?? 5)
+    setCases([]); setBatch('')
     // seed the upload-form params from their defaults
     setParams(Object.fromEntries(
       [...(upload?.params || []), ...(customCase?.params || [])].map((p) => [p.name, p.default ?? '']),
     ))
     if (live && type) {
-      getCampaignCases(type).then((d) => setCases(d.cases || [])).catch(() => {})
+      loadCases('')
+      getBatches(type).then((d) => setBatches(d.batches || [])).catch(() => setBatches([]))
     }
-  }, [live, type, upload, customCase, generate])
+  }, [live, type, upload, customCase, loadCases])
 
-  useEffect(() => {
-    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
-  }, [log])
+  useEffect(() => { loadCases(batch) }, [batch, loadCases])
 
-  async function track(startFn, label) {
-    setBusy(true); setLog([]); setResult(null); setError(null)
-    try {
-      const { jobId } = await startFn()
-      const snap = await pollJob(jobId, { onLog: (lines) => setLog((p) => [...p, ...lines]) })
-      if (snap.status === 'error') setError(snap.error || 'run failed')
-      else if (snap.run) setResult({
-        passed: snap.run.passed, total: snap.run.totalTests,
-        detail: snap.run.detail, label,
-      })
-    } catch (e) {
-      setError(e.message ?? String(e))
-    } finally {
-      setBusy(false)
-    }
-  }
+  const track = (startFn, after) => startJob({
+    key: jobKey,
+    kind: 'campaign',
+    label: experiment?.label ?? type,
+    view: 'run',
+    start: startFn,
+    describe: (snap) => snap.run
+      ? `${snap.run.passed}/${snap.run.totalTests} cases passed`
+      : undefined,
+    onComplete: (snap) => {
+      if (snap.status !== 'error') onDone?.()
+      after?.(snap)
+    },
+  })
 
-  const onRun = () => track(() => startCampaign(type), 'campaign')
+  const onRun = () => track(() => startCampaign(type, batch || undefined))
 
   const pick = (defs) => Object.fromEntries((defs || []).map((p) => [p.name, params[p.name]]))
 
@@ -92,28 +104,12 @@ export default function CampaignPanel({ live, experiment }) {
       content: binary ? await toBase64(f) : await f.text(),
     })
     const files = await Promise.all(list.map(readOne))
-    await track(() => uploadCase(type, files, pick(upload?.params), binary ? 'base64' : undefined), 'upload')
-    getCampaignCases(type).then((d) => setCases(d.cases || [])).catch(() => {})
+    track(() => uploadCase(type, files, pick(upload?.params), binary ? 'base64' : undefined),
+          () => loadCases(batch))
     if (fileRef.current) fileRef.current.value = ''
   }
 
-  const onCustom = () => track(() => runCustomCase(type, pick(customCase?.params)), 'custom')
-
-  async function onGenerate() {
-    setGenBusy(true); setError(null)
-    try {
-      const n = Math.max(1, Math.min(50, Number(genCount) || generate?.default || 5))
-      const res = await generateCases(type, n)
-      const d = await getCampaignCases(type)
-      setCases(d.cases || [])
-      setResult(null)
-      setLog([`generated ${res.count} test case(s) — they're in the Cases list below; hit Run to score them`])
-    } catch (e) {
-      setError(e.message ?? String(e))
-    } finally {
-      setGenBusy(false)
-    }
-  }
+  const onCustom = () => track(() => runCustomCase(type, pick(customCase?.params)))
 
   if (!experiment) return null
 
@@ -124,36 +120,28 @@ export default function CampaignPanel({ live, experiment }) {
         description={`${experiment.dut} checked against ${experiment.golden}. Every case must agree with the golden reference; the headline number is ${experiment.metric ?? 'the domain metric'}.`}
       >
         <div className={styles.runRow}>
-          <button type="button" className={styles.primary} onClick={onRun} disabled={busy || !type}>
-            <Icon name="play" size={16} /> {busy ? 'Running…' : `Run ${experiment.label}`}
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Cases</span>
+            <select value={batch} onChange={(e) => setBatch(e.target.value)} disabled={busy}>
+              <option value="">All cases ({cases.length ? cases.length : '—'})</option>
+              {batches.map((b) => (
+                <option key={b.name} value={b.name}>
+                  {b.name} ({b.count})
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="button" className={styles.primary} onClick={onRun}
+                  disabled={busy || !type || missingTools.length > 0}>
+            <Icon name="play" size={16} />
+            {busy ? 'Running…' : batch ? `Run “${batch}”` : `Run ${experiment.label}`}
           </button>
         </div>
-
-        {generate && (
-          <div className={styles.uploadBox}>
-            <div className={styles.uploadHead}>
-              <Icon name="generate" size={15} /> Generate tests — {generate.label}
-            </div>
-            <div className={styles.uploadRow}>
-              <label className={styles.uploadField}>
-                <span>how many</span>
-                <input
-                  type="number" min="1" max="50" step="1" value={genCount}
-                  onChange={(e) => setGenCount(e.target.value)}
-                  disabled={busy || genBusy}
-                />
-              </label>
-              <button type="button" className={styles.primary} onClick={onGenerate}
-                      disabled={busy || genBusy || !type}>
-                <Icon name="generate" size={15} /> {genBusy ? 'Generating…' : 'Generate'}
-              </button>
-            </div>
-            <p className={styles.setupNote}>
-              Synthesizes {generate.label} with a known-correct answer, adds them to the
-              Cases list below, then hit “Run” to score them — no files to drop in.
-            </p>
-          </div>
-        )}
+        <p className={styles.setupNote}>
+          {batches.length === 0
+            ? 'Runs the cases configured in farm.yaml. Generate a batch on the Tests tab to add more.'
+            : 'Select a batch to run only its cases, or “All cases” for every configured and generated case.'}
+        </p>
 
         {experiment.setup && (
           <p className={styles.setupNote}>
@@ -228,23 +216,30 @@ export default function CampaignPanel({ live, experiment }) {
           </div>
         )}
         {error && <p className={styles.error}><Icon name="alert" size={15} /> {error}</p>}
-        {log.length > 0 && <pre className={styles.log} ref={logRef}>{log.join('\n')}</pre>}
+        <LogPane lines={log} label="Run output" />
       </Section>
 
       <Section
-        title="Cases"
-        description={`The inputs for this experiment (${experiment.inputs ?? 'from farm.yaml'}). Edit the "${type}" block in farm/farm.yaml to add or change cases.`}
+        title={batch ? `Cases — batch “${batch}”` : 'Cases'}
+        description={
+          batch
+            ? `The ${cases.length} synthesized case(s) in this batch. Manage batches on the Tests tab.`
+            : `The inputs for this experiment (${experiment.inputs ?? 'from farm.yaml'}). Edit the "${type}" block in farm/farm.yaml to add or change cases, or generate a batch on the Tests tab.`
+        }
       >
         {cases.length === 0 ? (
           <p className={styles.muted}>No cases configured.</p>
         ) : (
           <ul className={styles.corpus}>
             {cases.map((c, i) => (
-              <li key={c.name ?? i} className={styles.corpusRow}>
-                <span className={styles.corpusName}>{c.name ?? `case ${i + 1}`}</span>
+              <li key={`${c.batch ?? ''}-${c.name ?? i}`} className={styles.corpusRow}>
+                <span className={styles.corpusName}>
+                  {c.name ?? `case ${i + 1}`}
+                  {!batch && c.batch && <span className={styles.caseBatch}>{c.batch}</span>}
+                </span>
                 <span className={styles.corpusBytes}>
                   {Object.entries(c)
-                    .filter(([k]) => k !== 'name')
+                    .filter(([k]) => k !== 'name' && k !== 'batch')
                     .map(([k, v]) => `${k}=${String(v).split('/').pop()}`)
                     .join('  ')}
                 </span>

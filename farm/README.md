@@ -1,4 +1,4 @@
-# Experiment Farm
+# AutoExperiment Farm
 
 One pipeline that runs **many kinds of experiment** and puts them all on one
 dashboard — a CPU, a compiler, a control loop, a heartbeat detector, a circuit.
@@ -33,6 +33,11 @@ that makes something worse shows up as a line dropping.
 
 ## Quick start
 
+Python 3.10–3.12 is required (`pyvsc`, used by the CPU generator, has no wheels
+for 3.13+). Run everything from the repository root.
+
+**macOS / Linux**
+
 ```bash
 # 1. core (reads farm.yaml) + whichever experiments you want
 python3.11 -m venv farm/.venv
@@ -50,8 +55,33 @@ farm/.venv/bin/python farm/run_experiment.py --all   # every config-driven exper
 farm/webapp/serve.sh
 ```
 
-Then open <http://127.0.0.1:8000> → **Run** to launch experiments, **Trend** to see
-every domain's pass-rate over time.
+**Windows** (PowerShell) — a venv puts its executables in `Scripts\`, not `bin/`:
+
+```powershell
+# 1.
+py -3.12 -m venv farm\.venv
+farm\.venv\Scripts\pip install -r farm\requirements\core.txt
+farm\.venv\Scripts\pip install -r farm\requirements\all.txt
+
+# 2.
+farm\.venv\Scripts\python farm\run_experiment.py --list
+
+# 3.
+farm\.venv\Scripts\python farm\run_experiment.py control
+farm\.venv\Scripts\python farm\run_experiment.py --all
+
+# 4. serve.sh is a bash script; run it from Git Bash, or start the backend
+#    directly after building the dashboard once:
+#      cd farm\dashboard; npm install; npm run build
+#      Copy-Item -Recurse farm\dashboard\dist farm\webapp\static
+farm\.venv\Scripts\python farm\webapp\server.py
+```
+
+Then open <http://127.0.0.1:8000> → **Experiments** to launch runs, **Tests** to
+generate inputs, **Trend** to see every domain's pass-rate over time.
+
+`control` and `ecg` work out of the box. The other three need a system tool —
+see the next section.
 
 ## The experiments
 
@@ -66,12 +96,90 @@ every domain's pass-rate over time.
 Install only what you need — each experiment has its own requirements file.
 `cosim` is the largest and has its own toolchain; see [../cosim/README.md](../cosim/README.md).
 
-For `ecg`, fetch the dataset once (it is not committed — it isn't ours to
-redistribute):
+## Installing the system tools
+
+`control` needs nothing beyond pip. The other four each want a tool on `PATH`.
+The dashboard disables the Run button and shows the install command for your
+platform; `farm/run_experiment.py` refuses with the same message.
+
+| Tool | Needed by | macOS | Debian / Ubuntu / WSL | Windows |
+|---|---|---|---|---|
+| `clang` (or any C compiler) | `compiler-diff` | `xcode-select --install` | `sudo apt install -y clang` | `winget install LLVM.LLVM` |
+| `ngspice` | `physics` | `brew install ngspice` | `sudo apt install -y ngspice` | `choco install ngspice` |
+| `verilator` | `cosim` | `brew install verilator` | `sudo apt install -y verilator` | in WSL — see below |
+| `spike` | `cosim` | `cosim/install_spike.sh` | `cosim/install_spike.sh` | in WSL — see below |
+| RISC-V gcc | `cosim` | `brew install riscv64-elf-gcc riscv64-elf-binutils` | `sudo apt install -y gcc-riscv64-unknown-elf` | in WSL — see below |
+| `sbt` | `cosim` | `brew install sbt` | [scala-sbt.org](https://www.scala-sbt.org/download) | `winget install sbt.sbt` |
+
+After installing anything, **restart the backend** — tool availability is probed
+at startup.
+
+Either RISC-V gcc prefix works: `riscv64-elf-gcc` (Homebrew) or
+`riscv64-unknown-elf-gcc` (apt). `spike` is not in apt or Homebrew core, so
+[`cosim/install_spike.sh`](../cosim/install_spike.sh) builds it from source into
+`~/.local` (override with `PREFIX=`).
+
+`compiler-diff` is not fussy about *which* C compiler: the helper honours `CC`,
+so `CC=gcc` works as well as clang. The experiment compares one compiler against
+itself at two optimisation levels, so any working compiler is a valid subject.
+
+### macOS notes
+
+Install [Homebrew](https://brew.sh) first; every tool above except `spike` comes
+from it. Apple Silicon puts binaries in `/opt/homebrew/bin`, which the backend
+already adds to the PATH it hands to child processes.
+
+### Windows notes
+
+`clang`, `ngspice` and `sbt` install natively; their installers request UAC, so
+run them from an elevated shell.
+
+The cosim toolchain (riscv-dv, verilator, spike, the RISC-V cross-compiler) has
+no Windows build, so **the backend runs cosim inside WSL** — both test generation
+and runs — against this same checkout over `/mnt/c`. Generated `.S` files and
+results still land in your Windows tree. Install the toolchain once inside WSL:
 
 ```bash
-farm/.venv/bin/python farm/experiments/ecg_fetch.py
+wsl
+sudo apt update
+sudo apt install -y verilator gcc-riscv64-unknown-elf sbt
+cd /mnt/c/path/to/simplechisel-fork
+bash cosim/install_spike.sh          # builds spike, ~5 minutes
 ```
+
+Tool detection follows suit: for `cosim` on Windows the backend probes WSL rather
+than the Windows `PATH`, so a tool installed in WSL is correctly reported as
+present.
+
+Two Windows details the code handles, worth knowing if you script around it:
+
+- A bare `bash` resolves to `System32\bash.exe` (the WSL launcher) because
+  `CreateProcess` searches System32 before `PATH`. The backend resolves a real
+  Git/MSYS bash by path; set `FARM_BASH` to override.
+- Shell scripts must keep LF endings. `.gitattributes` enforces this; a CRLF
+  checkout breaks every script under WSL with
+  `set: pipefail: invalid option name`.
+
+### Fetching the ECG dataset
+
+The MIT-BIH recordings are not committed — they aren't ours to redistribute.
+Fetch them once (needs network):
+
+```bash
+farm/.venv/bin/python farm/experiments/ecg_fetch.py        # macOS / Linux
+farm\.venv\Scripts\python farm/experiments/ecg_fetch.py    # Windows
+```
+
+Files land in `farm/data/mitdb/` (git-ignored). "Generate tests" on the ECG tab
+downloads more of the 48 records in the database.
+
+**How it is scored.** A detection counts if it lands within 150 ms of an
+annotated beat, and only symbols that denote an actual heartbeat count as truth
+(rhythm and signal-quality markers are excluded). Scoring skips the first
+`warmup_seconds` (default 5): the detector's band-pass filter has not settled at
+the start of an excerpt, so the opening beat is missed on nearly every record
+regardless of quality, and counting it would charge a constant penalty for a
+measurement artifact. A case passes at `min_sensitivity` (default 0.95).
 
 ## How it fits together
 
@@ -133,18 +241,22 @@ rather have inputs synthesized than supply your own.
 
 ### Generating tests
 
-You don't have to supply inputs by hand. Every `campaign` experiment can
-**synthesize** its own test cases: on the experiment's tab there's a
-**Generate tests** box — pick how many, click **Generate**, and the new cases
-appear in the Cases list. Hit **Run** to score them. Each generator produces
-inputs with a *known* correct answer, so a failure means a real regression, not a
-bad test.
+You don't have to supply inputs by hand. Every `campaign` experiment can add its
+own test cases: on the Tests tab there's a **Generate tests** box — name a batch,
+pick how many, click **Generate**. Hit **Run** on the Experiments tab to score
+them.
+
+Every generator produces cases a correct implementation passes, so a failure is a
+regression rather than a bad test. Where that guarantee cannot be met honestly,
+the generator does not fabricate data: `ecg` downloads more real recordings
+instead of synthesizing waveforms, because a clean signal with spikes at chosen
+positions is found by any detector and would score 100% regardless of quality.
 
 | Experiment | What "Generate" makes |
 |---|---|
 | `compiler-diff` | random integer C programs (a tiny CSmith) — well-defined arithmetic, so any `-O0` vs `-O2` divergence is a real miscompile |
-| `control` | random PID gain sets swept through the reference controller — a stress test of the step-response judge |
-| `ecg` | synthetic ECGs with QRS spikes at known sample positions, written as WFDB records whose `.atr` **is** the ground truth |
+| `control` | random PID gain sets, screened so the reference controller already meets the spec at them |
+| `ecg` | more real MIT-BIH recordings, downloaded from the 48 in the database |
 | `physics` | random R/C values across the low-pass family, all covered by the closed-form golden |
 
 Under the hood a generator is just a script that prints a JSON list of cases (and
